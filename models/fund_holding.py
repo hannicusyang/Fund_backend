@@ -1,8 +1,7 @@
 # models/fund_holding.py
-from flask_sqlalchemy import SQLAlchemy
+from . import db
 from datetime import datetime
 
-db = SQLAlchemy()
 
 class FundHolding(db.Model):
     __tablename__ = 'fund_holdings'

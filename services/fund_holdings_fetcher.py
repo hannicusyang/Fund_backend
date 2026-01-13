@@ -1,101 +1,67 @@
-# fund_holdings_fetcher.py
+# services/fund_holdings_fetcher.py
 import akshare as ak
 import pandas as pd
-import logging
-import time
-import random
-from config.logging_config import logger  # 复用你的日志配置
+from utils.date_utils import parse_quarter_from_text
 
+from config import logger
 
 def fetch_fund_holdings(fund_code: str, year: str) -> dict:
-    """
-    获取指定基金在某一年的持仓数据（来自天天基金网）
-
-    Args:
-        fund_code (str): 基金代码，如 "000001"
-        year (str): 年份，如 "2024"
-
-    Returns:
-        dict: 包含 success, message, data 等字段的结构化结果
-              data 是列表，每个元素为一条持仓记录（字典）
-    """
-    fund_code = str(fund_code).strip()
-    year = str(year).strip()
-
-    if not fund_code or not year.isdigit() or len(year) != 4:
-        return {
-            "success": False,
-            "message": "参数错误：fund_code 不能为空，year 必须是四位年份",
-            "data": []
-        }
-
-    max_retries = 2
-    for attempt in range(max_retries + 1):
-        try:
-            logger.info(f"正在抓取基金 {fund_code} {year} 年持仓数据...")
-            df = ak.fund_portfolio_hold_em(symbol=fund_code, date=year)
-
-            if df is None or df.empty:
-                raise ValueError("akshare 返回空数据")
-
-            # 列重命名（与历史净值脚本风格一致）
-            df = df.rename(columns={
-                '序号': 'rank',
-                '股票代码': 'stock_code',
-                '股票名称': 'stock_name',
-                '占净值比例': 'proportion_of_nav',  # 单位: %
-                '持股数': 'shares_held',            # 单位: 万股
-                '持仓市值': 'market_value',         # 单位: 万元
-                '季度': 'quarter'
-            })
-
-            # 数据清洗
-            df['rank'] = pd.to_numeric(df['rank'], errors='coerce')
-            df['proportion_of_nav'] = pd.to_numeric(df['proportion_of_nav'], errors='coerce')
-            df['shares_held'] = pd.to_numeric(df['shares_held'], errors='coerce')
-            df['market_value'] = pd.to_numeric(df['market_value'], errors='coerce')
-
-            # 转为字典列表（适合 JSON 序列化）
-            holdings = df.to_dict(orient='records')
-
-            logger.info(f"✅ 基金 {fund_code} {year} 年共获取 {len(holdings)} 条持仓记录")
-            return {
-                "success": True,
-                "message": f"成功获取 {len(holdings)} 条持仓数据",
-                "data": holdings
-            }
-
-        except Exception as e:
-            error_msg = str(e).split('\n')[0][:150]
-            if attempt < max_retries:
-                wait_sec = random.uniform(1.0, 2.0)
-                logger.warning(
-                    f"基金 {fund_code} 第 {attempt + 1} 次抓取失败（{error_msg}），"
-                    f"{wait_sec:.1f} 秒后重试..."
-                )
-                time.sleep(wait_sec)
-            else:
-                logger.error(f"基金 {fund_code} {year} 年持仓抓取最终失败: {error_msg}")
-                return {
-                    "success": False,
-                    "message": f"抓取失败: {error_msg}",
-                    "data": []
-                }
-
-    return {
-        "success": False,
-        "message": "未知错误",
-        "data": []
-    }
-
-
-# services/fund_holdings_fetcher.py
-def parse_quarter_from_text(text: str):
+    """ 抓取某基金某年的所有季度持仓（经清洗和标准化） """
     try:
-        year = text[:4]
-        q = text[5]
-        quarter = f"{year}Q{q}"
-        report_map = {"1": f"{year}-03-31", "2": f"{year}-06-30", "3": f"{year}-09-30", "4": f"{year}-12-31"}
-        return quarter, report_map.get(q)
-    except:
-        return "UNKNOWN", None
+        df = ak.fund_portfolio_hold_em(symbol=fund_code, date=year)
+
+        # 新增：处理空数据情况
+        if df.empty:
+            return {"success": True, "message": "无持仓数据", "data": []}
+
+        # === 关键修复：动态处理列数 ===
+        current_cols = len(df.columns)
+        if current_cols == 7:
+            # 标准7列：含“季度”
+            df.columns = [
+                'quarter_raw', 'stock_code', 'stock_name',
+                'proportion_of_nav', 'shares_held', 'market_value', 'quarter'
+            ]
+            # 注意：这里第一个是“序号”，但您后续用 quarter_raw 没用到，可忽略
+            # 实际“季度”在最后一列
+        elif current_cols == 6:
+            # 缺少“季度”列（如2025年最新数据）
+            df.columns = [
+                'quarter_raw', 'stock_code', 'stock_name',
+                'proportion_of_nav', 'shares_held', 'market_value'
+            ]
+            # 手动添加 quarter 列（用年份代替，后续 parse_quarter_from_text 可能会修正）
+            df['quarter'] = year
+        else:
+            logger.warning(f"未知列数 {current_cols}，跳过: {fund_code}@{year}")
+            return {"success": True, "message": "列数异常，跳过", "data": []}
+
+        # 清洗数值字段
+        for col in ['proportion_of_nav', 'shares_held', 'market_value']:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+        holdings = []
+        for _, row in df.iterrows():
+            # 使用 row['quarter']（可能是 year 字符串，也可能是 "2024Q3"）
+            quarter_std, report_date = parse_quarter_from_text(row['quarter'])
+            if not quarter_std:
+                # 如果解析失败，尝试用 year + Q4 作为 fallback（可选）
+                quarter_std = f"{year}Q4"
+                report_date = f"{year}-12-31"
+
+            holding = {
+                'stock_code': str(row['stock_code']).strip(),
+                'stock_name': str(row['stock_name']).strip(),
+                'proportion_of_nav': row['proportion_of_nav'],
+                'shares_held': row['shares_held'],
+                'market_value': row['market_value'],
+                'quarter': quarter_std,  # 标准化如 "2025Q4"
+                'report_date': report_date,  # 如 "2025-12-31"
+            }
+            holdings.append(holding)
+
+        return {"success": True, "message": "成功", "data": holdings}
+
+    except Exception as e:
+        logger.error(f"抓取失败 fund_code={fund_code}, year={year}: {e}")
+        return {"success": False, "message": str(e), "data": []}
