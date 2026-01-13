@@ -21,6 +21,8 @@ db.init_app(app)
 with app.app_context():
     db.create_all()
 
+
+
 # ====== 调度器（关键修改：延迟导入季度持仓任务）======
 scheduler = BackgroundScheduler()
 
@@ -43,27 +45,34 @@ scheduler.add_job(
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
+
+# ====== 注册蓝图 ======
+from routes.watchlist import watchlist_bp
+from routes.fund_rank import fund_rank_bp
+app.register_blueprint(watchlist_bp, url_prefix='/api/watchlist')
+app.register_blueprint(fund_rank_bp, url_prefix='/api/funds')
+
 # ====== 路由（保持原样）======
-@app.route('/run-task')
+@app.route('/api/run-task')
 def manual_run():
     return {"status": "项目正常运行"}
 
-@app.route('/openfund-update')
+@app.route('/api/openfund-update')
 def openfund_update():
     fund_open_synchronization()
     return {"status": "开放型基金信息已更新"}
 
-@app.route("/fund/history/<fund_code>")
+@app.route("/api//fund/history/<fund_code>")
 def api_fetch_fund(fund_code: str):
     result = fetch_and_save_fund_history(fund_code, force_update=True)
     return jsonify(result)
 
-@app.route('/debug/fetch_es_debug')
+@app.route('/api/debug/fetch_es_debug')
 def debug_es_fetch():
     fetch_and_save_fund_estimation(is_debug=True)
     return {"status": "success", "message": "手动抓取已触发"}
 
-@app.route('/debug/sync_fund_basic_info')
+@app.route('/api/debug/sync_fund_basic_info')
 def debug_sync_fund_basic_info():
     sync_fund_basic_info()
     return {"status": "success", "message": "基金基本信息已同步"}

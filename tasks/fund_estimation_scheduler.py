@@ -7,27 +7,38 @@ from config.logging_config import logger
 from models import db
 from models.fund_estimation import FundEstimation
 import math  # ← 新增：用于判断 NaN
-
+from datetime import datetime, time, timedelta
+import pandas_market_calendars as mcal
 
 def is_a_stock_trading_time():
-    """判断当前是否为 A 股交易时间（9:30-15:00 且为交易日）"""
-    try:
-        import exchange_calendars as tc
-        calendar = tc.get_calendar("XSHG")
-    except ImportError:
-        logger.warning("未安装 exchange-calendars，跳过交易日检查")
-        return True  # 默认允许抓取
-
+    """使用 pandas_market_calendars 判断 A 股交易时间（支持未来年份）"""
     now = datetime.now()
     today = now.date()
     current_time = now.time()
 
-    if not calendar.is_session(today):
+    # 检查交易时段
+    if not (time(9, 30) <= current_time <= time(15, 0)):
         return False
 
-    market_open = datetime.strptime("09:30", "%H:%M").time()
-    market_close = datetime.strptime("15:00", "%H:%M").time()
-    return market_open <= current_time <= market_close
+    try:
+        # 获取上交所日历
+        shanghai = mcal.get_calendar('SSE')  # SSE = Shanghai Stock Exchange
+
+        # 关键：生成包含 today 的交易日历（自动推算未来）
+        # 即使官方未发布，也会基于周末+历史假日规则估算
+        start_date = today - timedelta(days=7)
+        end_date = today + timedelta(days=30)
+
+        schedule = shanghai.schedule(start_date=start_date, end_date=end_date)
+
+        # 判断今天是否在交易日列表中
+        return today in schedule.index.date
+
+    except Exception as e:
+        # 降级：若库出错，至少保证工作日可运行（风险可控）
+        import logging
+        logging.warning(f"pandas_market_calendars error: {e}, fallback to weekday check")
+        return today.weekday() < 5  # 周一～周五
 
 def clear_old_estimation_data():
     """清空 fund_estimation 表中非今天的数据"""

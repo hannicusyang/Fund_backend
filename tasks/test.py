@@ -1,4 +1,3 @@
-import akshare as ak
-
-fund_portfolio_hold_em_df = ak.fund_portfolio_hold_em(symbol="000001", date="2026")
-print(fund_portfolio_hold_em_df)
+from exchange_calendars import get_calendar
+cal = get_calendar("XSHG")
+print(cal.schedule.index[-5:])  # 查看最后几个交易日
