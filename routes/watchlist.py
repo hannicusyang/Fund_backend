@@ -3,6 +3,7 @@ from flask import Blueprint, jsonify, request
 from models import db
 from models.fund_watchlist import FundWatchlist
 from models.fund_open_rank import FundOpenRankAll
+from models.my_fund_holding import MyFundHolding
 
 watchlist_bp = Blueprint('watchlist', __name__)
 
@@ -33,6 +34,18 @@ def add_to_watchlist():
             db.session.commit()
         return jsonify({"success": True, "message": "已在观察清单中"}), 200
 
+    # 创建 MyFundHolding 初始化记录 ===
+    from datetime import datetime
+    holding = MyFundHolding(
+        user_id=USER_ID,
+        fund_code=fund_code,
+        cost_price=0,
+        shares=0,
+        total_cost=0,
+        purchased_at=datetime.utcnow()  # 首次“虚拟”买入时间
+    )
+    db.session.add(holding)
+
     # 添加到观察清单
     watch_item = FundWatchlist(user_id=USER_ID, fund_code=fund_code)
     db.session.add(watch_item)
@@ -41,7 +54,7 @@ def add_to_watchlist():
     rank_record.is_checked = True
 
     db.session.commit()
-    return jsonify({"success": True, "message": "已加入观察清单"}), 201
+    return jsonify({"success": True, "message": "已加入观察清单并初始化持仓"}), 201
 
 
 @watchlist_bp.route('/remove/<fund_code>', methods=['DELETE'])
@@ -60,6 +73,11 @@ def remove_from_watchlist(fund_code):
             db.session.commit()
         return jsonify({"success": False, "message": "未在观察清单中"}), 404
 
+    # === 新增：删除 MyFundHolding 记录 ===
+    holding = MyFundHolding.query.filter_by(user_id=USER_ID, fund_code=fund_code).first()
+    if holding:
+        db.session.delete(holding)
+
     # 删除观察记录
     db.session.delete(watch_item)
 
@@ -69,7 +87,7 @@ def remove_from_watchlist(fund_code):
         rank_record.is_checked = False
 
     db.session.commit()
-    return jsonify({"success": True, "message": "已移除"}), 200
+    return jsonify({"success": True, "message": "已移除观察清单及持仓记录"}), 200
 
 
 @watchlist_bp.route('/list', methods=['GET'])
