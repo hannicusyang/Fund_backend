@@ -15,6 +15,7 @@ def add_to_watchlist():
     data = request.get_json()
     fund_code = data.get('fund_code')
 
+
     if not fund_code:
         return jsonify({"success": False, "message": "缺少 fund_code"}), 400
 

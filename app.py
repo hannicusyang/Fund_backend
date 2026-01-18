@@ -6,7 +6,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 import atexit
 from models import db
 from config import AppConfig
-
+from flask_cors import CORS
 # ====== 您的任务模块（先不导入 sync_fund_holdings_quarterly）======
 from tasks.fund_basic_sync import sync_fund_basic_info
 from tasks.fund_estimation_scheduler import fetch_and_save_fund_estimation
@@ -14,6 +14,7 @@ from tasks.fund_open_daily import fund_open_synchronization
 from tasks.fund_history_to_mysql import fetch_and_save_fund_history
 
 app = Flask(__name__)
+CORS(app)
 app.config.from_object(AppConfig)
 
 # ====== 初始化数据库 ======
