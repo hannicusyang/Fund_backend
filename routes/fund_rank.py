@@ -17,6 +17,8 @@ ALLOWED_SORT_FIELDS = {
     'monthly_3_growth_rate',
     'monthly_6_growth_rate',
     'yearly_1_growth_rate',
+    'yearly_2_growth_rate',
+    'yearly_3_growth_rate',
     'ytd_growth_rate',
     'update_time'
 }
