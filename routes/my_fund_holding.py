@@ -1,12 +1,16 @@
 # routes/holding.py
 from flask import Blueprint, jsonify
-from models import db
+from models import db, FundNavHistory
 from models.my_fund_holding import MyFundHolding
 from models.fund_estimation import FundEstimation
 from models.fund_open_rank import FundOpenRankAll  # 用于获取基金名称
 from datetime import date
 from flask import request
-from datetime import datetime
+from datetime import datetime, timedelta
+from sqlalchemy import and_, func
+from collections import defaultdict
+
+from config import *
 
 holding_bp = Blueprint('holding', __name__)
 USER_ID = 'default'  # 单用户系统
@@ -260,3 +264,92 @@ def update_holding():
     except Exception as e:
         db.session.rollback()
         return jsonify({"success": False, "message": str(e)}), 500
+
+
+
+
+
+@holding_bp.route('/portfolio-history', methods=['GET'])
+def get_portfolio_history():
+    """
+    计算用户投资组合的历史每日资产、收益、收益率
+    基于 fund_nav_history 的真实历史净值 + 用户当前持仓份额
+    """
+    try:
+        user_id = USER_ID
+        days = request.args.get('days', 30, type=int)
+        if days < 1:
+            days = 30
+        elif days > 365:
+            days = 365
+
+        # 获取用户当前有效持仓（shares > 0）
+        holdings = MyFundHolding.query.filter(
+            MyFundHolding.user_id == user_id,
+            MyFundHolding.shares > 0
+        ).all()
+
+        if not holdings:
+            return jsonify({"success": True, "data": []})
+
+        fund_codes = [h.fund_code for h in holdings]
+        holding_map = {h.fund_code: h for h in holdings}
+
+        # 计算起始日期
+        end_date = datetime.utcnow().date()
+        start_date = end_date - timedelta(days=days)
+
+        # 查询这些基金在 [start_date, end_date] 的所有历史净值
+        nav_records = FundNavHistory.query.filter(
+            and_(
+                FundNavHistory.fund_code.in_(fund_codes),
+                FundNavHistory.nav_date >= start_date,
+                FundNavHistory.nav_date <= end_date
+            )
+        ).order_by(FundNavHistory.nav_date).all()
+
+        # 按日期分组
+        date_navs = defaultdict(dict)  # {date: {fund_code: nav}}
+        for rec in nav_records:
+            date_str = rec.nav_date.isoformat()
+            date_navs[date_str][rec.fund_code] = float(rec.net_value)
+
+        # 构建结果
+        history_data = []
+        for date_str in sorted(date_navs.keys()):
+            total_asset = 0.0
+            total_cost = 0.0
+
+            for fund_code, nav in date_navs[date_str].items():
+                holding = holding_map.get(fund_code)
+                if not holding:
+                    continue
+                shares = float(holding.shares)
+                cost = float(holding.total_cost)
+
+                current_value = nav * shares
+                total_asset += current_value
+                total_cost += cost
+
+            if total_cost <= 0:
+                profit = 0.0
+                profit_rate = 0.0
+            else:
+                profit = total_asset - total_cost
+                profit_rate = (profit / total_cost) * 100
+
+            history_data.append({
+                "date": date_str,
+                "total_asset": round(total_asset, 2),
+                "total_profit": round(profit, 2),
+                "total_profit_rate": round(profit_rate, 2)
+            })
+
+        # 确保按日期排序
+        history_data.sort(key=lambda x: x["date"])
+
+        return jsonify({"success": True, "data": history_data})
+
+    except Exception as e:
+        logger.error(f"获取组合历史失败: {str(e)}")
+        return jsonify({"success": False, "message": "获取历史数据失败"}), 500

@@ -14,7 +14,7 @@ from tasks.fund_basic_sync import sync_fund_basic_info
 from tasks.fund_estimation_scheduler import fetch_and_save_fund_estimation
 from tasks.fund_open_daily import fund_open_synchronization
 from tasks.fund_history_to_mysql import fetch_and_save_fund_history
-
+from tasks.fund_history_to_mysql import sync_all_watched_funds
 app = Flask(__name__)
 CORS(app)
 app.config.from_object(AppConfig)
@@ -33,6 +33,7 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(sync_fund_basic_info, 'cron', hour=0, minute=10)
 scheduler.add_job(fund_open_synchronization, 'cron', id='fund_open_sync', hour=0, minute=30)
 scheduler.add_job(fetch_and_save_fund_estimation, trigger=IntervalTrigger(minutes=3), id='fund_estimation_job', replace_existing=True)
+scheduler.add_job(sync_all_watched_funds, 'cron', id='fund_watched_sync', hour=0, minute=40)
 
 # ✅ 关键修复：在这里局部导入，避免顶层循环
 scheduler.add_job(

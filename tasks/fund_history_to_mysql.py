@@ -9,6 +9,7 @@ from config.logging_config import logger
 from models import db
 from models.fund_nav_history import FundNavHistory
 from models.fund_list import FundBasic
+from models.fund_watchlist import FundWatchlist
 
 # =============== 使用 exchange_calendars 判断交易日 ===============
 try:
@@ -199,4 +200,49 @@ def fetch_and_save_fund_history(fund_code: str, force_update: bool = False):
                 "fund_name": fund_name,
                 "record_count": 0,
                 "exists": False
+            }
+
+
+# ========== 新增：同步所有自选基金的历史净值 ==========
+def sync_all_watched_funds(force_update: bool = False):
+    """
+    获取 fund_watchlist 表中所有基金，并同步其历史净值到 fund_nav_history
+    :param force_update: 是否强制更新（忽略“已是最新”判断）
+    """
+    from app import app
+    with app.app_context():
+        try:
+            # 查询所有自选基金代码（去重）
+            watched_funds = db.session.query(FundWatchlist.fund_code).distinct().all()
+            fund_codes = [f[0] for f in watched_funds]
+
+            if not fund_codes:
+                logger.info("观察清单为空，无需同步")
+                return {"success": True, "message": "观察清单为空", "total": 0, "updated": 0}
+
+            logger.info(f"开始同步 {len(fund_codes)} 只自选基金的历史净值...")
+            updated_count = 0
+
+            for i, fund_code in enumerate(fund_codes, 1):
+                logger.info(f"[{i}/{len(fund_codes)}] 正在处理基金: {fund_code}")
+                result = fetch_and_save_fund_history(fund_code, force_update=force_update)
+                if result["success"] and result["record_count"] > 0:
+                    updated_count += 1
+
+            logger.info(f"✅ 自选基金历史净值同步完成！共 {len(fund_codes)} 只，新增数据 {updated_count} 只")
+            return {
+                "success": True,
+                "message": "自选基金同步完成",
+                "total": len(fund_codes),
+                "updated": updated_count
+            }
+
+        except Exception as e:
+            error_msg = str(e)[:200]
+            logger.error(f"同步自选基金失败: {error_msg}")
+            return {
+                "success": False,
+                "message": f"同步失败: {error_msg}",
+                "total": 0,
+                "updated": 0
             }
