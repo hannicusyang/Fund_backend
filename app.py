@@ -34,7 +34,7 @@ scheduler.add_job(fetch_and_save_fund_estimation, trigger=IntervalTrigger(minute
 # ✅ 关键修复：在这里局部导入，避免顶层循环
 scheduler.add_job(
     id='sync_fund_holdings_q1',
-    func= 'tasks.sync_fund_holdings_quarterly:sync_all_fund_holdings_quarterly',
+    func= 'tasks.sync_fund_holdings_quarterly:sync_watchlist_fund_holdings_quarterly',
     trigger='cron',
     month='1,4,7,10',
     day=15,

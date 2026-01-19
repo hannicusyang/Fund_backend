@@ -4,7 +4,7 @@ import pandas as pd
 import logging
 from config.logging_config import logger
 from models import db
-from models.fund_basic import FundBasic
+from models.fund_list import FundBasic
 
 
 def fetch_fund_data():

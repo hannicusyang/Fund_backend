@@ -1,10 +1,10 @@
-# models/fund_basic.py
+# models/fund_list.py
 from . import db
 from datetime import datetime
 
 
 class FundBasic(db.Model):
-    __tablename__ = 'fund_basic_info'
+    __tablename__ = 'fund_list'
 
     fund_code = db.Column(db.String(20), primary_key=True, comment='基金代码')
     pinyin_abbr = db.Column(db.String(100), comment='拼音缩写')

@@ -8,7 +8,7 @@ from datetime import datetime, date, timedelta
 from config.logging_config import logger
 from models import db
 from models.fund_nav_history import FundNavHistory
-from models.fund_basic import FundBasic
+from models.fund_list import FundBasic
 
 # =============== 使用 exchange_calendars 判断交易日 ===============
 try:

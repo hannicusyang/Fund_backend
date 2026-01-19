@@ -6,12 +6,35 @@ from datetime import datetime, date
 from config.logging_config import logger
 from models import db
 from models.fund_estimation import FundEstimation
+from models.trading_day import TradingDay
 import math  # ← 新增：用于判断 NaN
 from datetime import datetime, time, timedelta
 import pandas_market_calendars as mcal
 
+
+def sync_trading_days():
+    """从 AKShare 同步交易日历到数据库（幂等操作）"""
+    try:
+        # 检查是否已有数据
+        if db.session.query(TradingDay).first() is not None:
+            logger.debug("📅 交易日历已存在，跳过同步")
+            return
+
+        logger.info("🔄 正在从 AKShare 同步交易日历...")
+        df = ak.tool_trade_date_hist_sina()
+        dates_to_insert = [
+            TradingDay(trade_date=pd.to_datetime(row['trade_date']).date())
+            for _, row in df.iterrows()
+        ]
+        db.session.bulk_save_objects(dates_to_insert)
+        db.session.commit()
+        logger.info(f"✅ 成功同步 {len(dates_to_insert)} 个交易日到数据库")
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"❌ 同步交易日历失败: {e}")
+
 def is_a_stock_trading_time():
-    """使用 pandas_market_calendars 判断 A 股交易时间（支持未来年份）"""
+    """判断当前是否为 A 股交易时间（查数据库 + 时间段检查）"""
     now = datetime.now()
     today = now.date()
     current_time = now.time()
@@ -20,41 +43,49 @@ def is_a_stock_trading_time():
     if not (time(9, 30) <= current_time <= time(15, 0)):
         return False
 
+    # 查数据库
     try:
-        # 获取上交所日历
-        shanghai = mcal.get_calendar('SSE')  # SSE = Shanghai Stock Exchange
-
-        # 关键：生成包含 today 的交易日历（自动推算未来）
-        # 即使官方未发布，也会基于周末+历史假日规则估算
-        start_date = today - timedelta(days=7)
-        end_date = today + timedelta(days=30)
-
-        schedule = shanghai.schedule(start_date=start_date, end_date=end_date)
-
-        # 判断今天是否在交易日列表中
-        return today in schedule.index.date
-
+        exists = db.session.query(
+            db.exists().where(TradingDay.trade_date == today)
+        ).scalar()
+        return bool(exists)
     except Exception as e:
-        # 降级：若库出错，至少保证工作日可运行（风险可控）
-        import logging
-        logging.warning(f"pandas_market_calendars error: {e}, fallback to weekday check")
-        return today.weekday() < 5  # 周一～周五
+        logger.error(f"❌ 查询交易日失败: {e}")
+        return False  # 安全起见返回 False
 
-def clear_old_estimation_data():
-    """清空 fund_estimation 表中非今天的数据"""
+
+def clear_old_estimation_data(batch_size=5000):
+    """
+    清理逻辑：只保留 fetch_time 日期 = 今天的记录
+    （允许同一只基金同一天有多条，只要是在今天抓取的）
+    """
+    from datetime import date
     today = date.today()
+    total_deleted = 0
+
     try:
-        deleted_count = FundEstimation.query.filter(
-            FundEstimation.estimation_date != today
-        ).delete()
-        db.session.commit()
-        if deleted_count > 0:
-            logger.info(f"🧹 已清理 {deleted_count} 条非今日的旧数据")
+        while True:
+            ids = db.session.query(FundEstimation.id).filter(
+                db.func.date(FundEstimation.fetch_time) != today
+            ).limit(batch_size).all()
+
+            if not ids:
+                break
+
+            id_list = [row.id for row in ids]
+            deleted = FundEstimation.query.filter(FundEstimation.id.in_(id_list)).delete(synchronize_session=False)
+            db.session.commit()
+            total_deleted += deleted
+            logger.debug(f"🧹 删除 {deleted} 条非今日抓取数据（累计 {total_deleted}）")
+
+        if total_deleted > 0:
+            logger.info(f"✅ 清理完成：共删除 {total_deleted} 条旧抓取数据")
         else:
-            logger.debug("✅ 无旧数据需要清理")
+            logger.debug("✅ 无旧抓取数据需要清理")
+
     except Exception as e:
         db.session.rollback()
-        logger.error(f"❌ 清理旧数据失败: {e}")
+        logger.error(f"❌ 清理失败: {e}")
 
 
 def save_estimation_to_mysql(df: pd.DataFrame):
@@ -143,19 +174,22 @@ def save_estimation_to_mysql(df: pd.DataFrame):
         db.session.rollback()
         logger.error(f"❌ 写入失败: {e}")
 
+
 def fetch_and_save_fund_estimation(is_debug=False):
     """主抓取函数"""
-    if not is_debug and not is_a_stock_trading_time():
-        logger.debug("非交易时间，跳过")
-        return
-
     try:
-        # 进入 Flask 应用上下文（关键！）
-        from app import app  # ← 关键：导入全局 app
+        from app import app  # 确保能导入 app 实例
         with app.app_context():
+            # ✅ 所有逻辑（包括判断是否交易时间）都放在这里！
+            if not is_debug and not is_a_stock_trading_time():
+                logger.debug("非 A 股交易时间，跳过抓取")
+                return
+
+            sync_trading_days()
             clear_old_estimation_data()
             logger.info("📡 开始抓取基金估值...")
             df = ak.fund_value_estimation_em(symbol="全部")
             save_estimation_to_mysql(df)
+
     except Exception as e:
         logger.error(f"💥 抓取失败: {e}", exc_info=True)
