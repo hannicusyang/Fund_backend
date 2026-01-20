@@ -1,4 +1,7 @@
 # routes/holding.py
+import json
+
+import requests
 from flask import Blueprint, jsonify
 from models import db, FundNavHistory
 from models.my_fund_holding import MyFundHolding
@@ -21,6 +24,7 @@ ALLOWED_SORT_FIELDS = {
     'fund_name',
     'cost_price',
     'shares',
+    'holding_value',
     'total_cost',
     'profit',
     'profit_rate',
@@ -34,14 +38,65 @@ ALLOWED_SORT_FIELDS = {
 
 def calculate_profit_and_rate(cost_price, shares, current_nav):
     """计算持有收益和持有收益率"""
-    if not cost_price or not shares or not current_nav:
+    try:
+        # 统一转为 float，避免 Decimal 和 float 混用
+        cost_price_f = float(cost_price) if cost_price is not None else 0.0
+        shares_f = float(shares) if shares is not None else 0.0
+        current_nav_f = float(current_nav) if current_nav is not None else 0.0
+    except (TypeError, ValueError):
         return 0.0, 0.0
-    total_cost = float(cost_price * shares)
-    current_value = float(current_nav * shares)
+
+    if cost_price_f == 0 or shares_f == 0 or current_nav_f == 0:
+        return 0.0, 0.0
+
+    total_cost = cost_price_f * shares_f
+    current_value = current_nav_f * shares_f
     profit = current_value - total_cost
     profit_rate = profit / total_cost if total_cost != 0 else 0.0
-    return round(profit, 2), round(profit_rate * 100, 2)  # 收益率转为百分比
 
+    return round(profit, 2), round(profit_rate * 100, 2)
+
+
+def get_fund_estimation_from_tian_tian(fund_code):
+    """
+    从天天基金网获取单只基金的估值数据
+    返回: dict 或 None
+    """
+    try:
+        url = f"http://fundgz.1234567.com.cn/js/{fund_code}.js"
+        response = requests.get(url, timeout=5)
+
+        if response.status_code == 200 and len(response.text) > 20:
+            # 解析 JSONP: jsonpgz({...})
+            data_str = response.text[8:-2]  # 去掉 jsonpgz( 和 );
+            data = json.loads(data_str)
+
+            # 提取所需字段
+            estimated_nav = float(data.get("gsz", 0))  # 估算净值
+            daily_growth_rate = float(data.get("gszzl", 0))  # 估算增长率 (%)
+            gztime = data.get("gztime", "")  # 估算时间
+
+            # 从 gztime 中提取日期部分 (格式: "2025-01-20 15:00")
+            net_value_date = None
+            if gztime and len(gztime) >= 10:
+                date_str = gztime[:10]  # "2025-01-20"
+                try:
+                    net_value_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                except ValueError:
+                    pass
+
+            return {
+                'estimated_nav': estimated_nav,
+                'daily_growth_rate': daily_growth_rate,
+                'net_value_date': net_value_date,
+                'last_nav': float(data.get("dwjz", 0))  # 上一日单位净值
+            }
+    except Exception as e:
+        # 记录错误但不中断主流程
+        print(f"获取天天基金估值失败 {fund_code}: {str(e)}")
+        pass
+
+    return None
 
 @holding_bp.route('/list', methods=['GET'])
 def get_holding_list():
@@ -121,6 +176,16 @@ def get_holding_list():
                 daily_growth_rate = est.published_growth_rate or est.estimated_growth_rate
                 last_nav = est.last_nav
 
+
+            # 如果数据库中没有估值数据，则从天天基金接口获取
+            if current_nav is None:
+                tian_tian_data = get_fund_estimation_from_tian_tian(fund_code)
+                if tian_tian_data:
+                    current_nav = tian_tian_data['estimated_nav']
+                    net_value_date = tian_tian_data['net_value_date']
+                    daily_growth_rate = tian_tian_data['daily_growth_rate']
+                    last_nav = tian_tian_data['last_nav']
+
             profit, profit_rate = 0.0, 0.0
             if current_nav is not None and holding.shares > 0:
                 profit, profit_rate = calculate_profit_and_rate(
@@ -133,6 +198,7 @@ def get_holding_list():
                 "net_value_date": net_value_date.isoformat() if net_value_date else None,
                 "estimated_nav": float(current_nav) if current_nav else None,
                 "last_nav": float(last_nav) if last_nav else None,
+                "holding_value": float(holding.total_cost) + profit,
                 "cost_price": float(holding.cost_price),
                 "shares": float(holding.shares),
                 "total_cost": float(holding.total_cost),
@@ -149,7 +215,7 @@ def get_holding_list():
 
         # ✅ 排序逻辑
         sort_field = request.args.get('sort_field', '').strip()
-        sort_order = request.args.get('sort_order', 'asc').lower()
+        sort_order = request.args.get('sort_order', 'desc').lower()
 
         if sort_field in ALLOWED_SORT_FIELDS:
             # 提取排序值的函数
