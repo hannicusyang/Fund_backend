@@ -163,4 +163,28 @@ create table fund_db.trading_day
 """
 
 
+"""
+CREATE TABLE `fund_estimation` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `fund_code` varchar(20) NOT NULL,
+  `fund_name` varchar(255) NOT NULL,
+  `estimation_date` date NOT NULL COMMENT '估算所针对的日期 (T日)',
+  `last_nav_date` date DEFAULT NULL COMMENT '上一交易日净值日期 (T-1日)',
+  `estimated_nav` decimal(18,6) DEFAULT NULL,
+  `estimated_growth_rate` decimal(10,4) DEFAULT NULL,
+  `published_nav` decimal(18,6) DEFAULT NULL,
+  `published_growth_rate` decimal(10,4) DEFAULT NULL,
+  `estimation_bias` decimal(10,4) DEFAULT NULL,
+  `last_nav` decimal(18,6) DEFAULT NULL COMMENT 'T-1日单位净值',
+  `fetch_time` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_estimation_date` (`estimation_date`),
+  KEY `idx_fetch_time` (`fetch_time`),
+  KEY `idx_fund_code` (`fund_code`)
+) ENGINE=InnoDB AUTO_INCREMENT=32515 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+
+
+"""
+
+
 

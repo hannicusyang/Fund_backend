@@ -10,6 +10,7 @@ from models import db
 from models.fund_nav_history import FundNavHistory
 from models.fund_list import FundBasic
 from models.fund_watchlist import FundWatchlist
+import sys
 
 # =============== 使用 exchange_calendars 判断交易日 ===============
 try:
@@ -54,7 +55,7 @@ def _is_fund_up_to_date(fund_code: str) -> bool:
 # ========== 以下函数保持不变 ==========
 def _get_fund_name(fund_code: str) -> str:
     try:
-        fund = FundBasic.query.get(fund_code)
+        fund = db.session.get(FundBasic, fund_code)
         return fund.fund_name if fund else fund_code
     except Exception as e:
         logger.warning(f"查询基金名称失败 {fund_code}: {e}")
@@ -246,3 +247,8 @@ def sync_all_watched_funds(force_update: bool = False):
                 "total": 0,
                 "updated": 0
             }
+
+
+if __name__ == "__main__":
+    success = sync_all_watched_funds()
+    sys.exit(0 if success else 1)

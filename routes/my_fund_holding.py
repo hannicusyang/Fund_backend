@@ -12,8 +12,16 @@ from flask import request
 from datetime import datetime, timedelta
 from sqlalchemy import and_, func
 from collections import defaultdict
-
+import time as time_module
 from config import *
+
+
+# ✅ 新增：Redis 相关导入
+try:
+    from models.redis_client import get_redis_client
+    redis_available = True
+except ImportError:
+    redis_available = False
 
 holding_bp = Blueprint('holding', __name__)
 USER_ID = 'default'  # 单用户系统
@@ -98,6 +106,95 @@ def get_fund_estimation_from_tian_tian(fund_code):
 
     return None
 
+
+def get_fund_estimation_from_redis(fund_code):
+    """
+    从 Redis 获取基金估值数据
+    默认是当天交易日的数据
+    """
+    if not redis_available:
+        return None
+
+    try:
+        redis_client = get_redis_client()
+        if not redis_client:
+            return None
+
+        # 使用新的时间序列 key 格式
+        redis_key = f"fund_ts:{fund_code}"
+
+        # 获取最新的1条记录（倒序取第一条）
+        result = redis_client.zrevrange(redis_key, 0, 0, withscores=True)
+
+        if not result:
+            return None
+
+        # 解析 JSON 数据
+        member, timestamp = result[0]
+        try:
+            data = json.loads(member)
+        except (json.JSONDecodeError, TypeError):
+            print(f"Redis JSON 数据解析失败 {fund_code}")
+            return None
+
+        # ✅ 关键：将数据转换为与原来完全相同的格式
+        # 处理数值字段（空字符串转为 None）
+        def parse_float_value(value):
+            if value == '' or value is None:
+                return None
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return None
+
+        # 提取并转换字段
+        estimation_date_str = data.get('estimation_date', '')
+        net_value_date = None
+        if estimation_date_str:
+            try:
+                net_value_date = datetime.strptime(estimation_date_str, "%Y-%m-%d").date()
+            except ValueError:
+                pass
+
+        # 标准化返回格式，与数据库和天天基金接口保持一致
+        return {
+            'estimated_nav': parse_float_value(data.get('estimated_nav')),
+            'daily_growth_rate': parse_float_value(data.get('estimated_growth_rate')),
+            'net_value_date': net_value_date,
+            'last_nav': parse_float_value(data.get('last_nav'))
+        }
+
+    except Exception as e:
+        print(f"从 Redis 获取基金估值失败 {fund_code}: {str(e)}")
+        return None
+
+
+# ✅ 新增：从数据库获取最新估值数据
+def get_fund_estimation_from_db(fund_code):
+    """从数据库获取基金的最新估值数据"""
+    try:
+        # 获取该基金最新的估值记录
+        latest_est = FundEstimation.query.filter_by(fund_code=fund_code) \
+            .order_by(FundEstimation.fetch_time.desc()) \
+            .first()
+
+        if latest_est:
+            current_nav = latest_est.published_nav or latest_est.estimated_nav
+            net_value_date = latest_est.estimation_date
+            daily_growth_rate = latest_est.published_growth_rate or latest_est.estimated_growth_rate
+            last_nav = latest_est.last_nav
+
+            return {
+                'estimated_nav': float(current_nav) if current_nav else None,
+                'daily_growth_rate': float(daily_growth_rate) if daily_growth_rate else None,
+                'net_value_date': net_value_date,
+                'last_nav': float(last_nav) if last_nav else None
+            }
+    except Exception as e:
+        print(f"从数据库获取基金估值失败 {fund_code}: {str(e)}")
+        pass
+    return None
+
 @holding_bp.route('/list', methods=['GET'])
 def get_holding_list():
     """
@@ -135,23 +232,6 @@ def get_holding_list():
         all_holdings = query.all()
         fund_codes = [h.fund_code for h in all_holdings]
 
-        # 批量获取最新估算数据
-        latest_estimations = {}
-        if fund_codes:
-            estimation_subq = db.session.query(
-                FundEstimation.fund_code,
-                db.func.max(FundEstimation.fetch_time).label('max_fetch_time')
-            ).filter(FundEstimation.fund_code.in_(fund_codes)) \
-             .group_by(FundEstimation.fund_code).subquery()
-
-            estimations = db.session.query(FundEstimation) \
-                .join(estimation_subq,
-                      (FundEstimation.fund_code == estimation_subq.c.fund_code) &
-                      (FundEstimation.fetch_time == estimation_subq.c.max_fetch_time)) \
-                .all()
-            for est in estimations:
-                latest_estimations[est.fund_code] = est
-
         # 获取基金名称
         fund_names = {}
         if fund_codes:
@@ -159,32 +239,32 @@ def get_holding_list():
             for rec in rank_records:
                 fund_names[rec.fund_code] = rec.fund_name
 
+
         # 构建完整结果列表（用于排序和分页）
         full_result = []
         for holding in all_holdings:
             fund_code = holding.fund_code
-            est = latest_estimations.get(fund_code)
 
-            current_nav = None
-            net_value_date = None
-            daily_growth_rate = None
-            last_nav = None
+            # ✅ 三级缓存策略：Redis -> 数据库 -> 天天基金接口
+            estimation_data = None
 
-            if est:
-                current_nav = est.published_nav or est.estimated_nav
-                net_value_date = est.estimation_date
-                daily_growth_rate = est.published_growth_rate or est.estimated_growth_rate
-                last_nav = est.last_nav
+            # 1. 优先从 Redis 获取
+            estimation_data = get_fund_estimation_from_redis(fund_code)
 
+            # 2. 如果 Redis 没有，从数据库获取
+            if estimation_data is None:
+                estimation_data = get_fund_estimation_from_db(fund_code)
 
-            # 如果数据库中没有估值数据，则从天天基金接口获取
-            if current_nav is None:
-                tian_tian_data = get_fund_estimation_from_tian_tian(fund_code)
-                if tian_tian_data:
-                    current_nav = tian_tian_data['estimated_nav']
-                    net_value_date = tian_tian_data['net_value_date']
-                    daily_growth_rate = tian_tian_data['daily_growth_rate']
-                    last_nav = tian_tian_data['last_nav']
+            # 3. 如果数据库也没有，从天天基金接口获取
+            if estimation_data is None:
+                estimation_data = get_fund_estimation_from_tian_tian(fund_code)
+
+            # 提取估值数据
+            current_nav = estimation_data['estimated_nav'] if estimation_data else None
+            net_value_date = estimation_data['net_value_date'] if estimation_data else None
+            daily_growth_rate = estimation_data['daily_growth_rate'] if estimation_data else None
+            last_nav = estimation_data['last_nav'] if estimation_data else None
+
 
             profit, profit_rate = 0.0, 0.0
             if current_nav is not None and holding.shares > 0:
@@ -209,7 +289,6 @@ def get_holding_list():
                 "is_checked": True,
                 # 临时保留原始对象用于排序
                 "_holding_obj": holding,
-                "_est_obj": est
             }
             full_result.append(item)
 
@@ -244,7 +323,6 @@ def get_holding_list():
         # 移除临时字段
         for item in paginated_items:
             item.pop('_holding_obj', None)
-            item.pop('_est_obj', None)
 
         return jsonify({
             "success": True,
@@ -332,9 +410,6 @@ def update_holding():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
-
-
-
 @holding_bp.route('/portfolio-history', methods=['GET'])
 def get_portfolio_history():
     """
@@ -419,3 +494,147 @@ def get_portfolio_history():
     except Exception as e:
         logger.error(f"获取组合历史失败: {str(e)}")
         return jsonify({"success": False, "message": "获取历史数据失败"}), 500
+
+
+
+def fallback_calculate_portfolio_realtime():
+    """
+    回退方案：当 Redis 不可用或缓存失效时的实时计算
+    """
+    try:
+        holdings = MyFundHolding.query.filter(
+            MyFundHolding.user_id == USER_ID,
+            MyFundHolding.shares > 0
+        ).all()
+
+        if not holdings:
+            return jsonify({
+                "success": True,
+                "data": {
+                    "estimated_total_asset": 0.0,
+                    "estimated_total_profit": 0.0,
+                    "estimated_total_profit_rate": 0.0,
+                    "update_time": datetime.now().isoformat()
+                }
+            })
+
+        total_asset = 0.0
+        total_cost = 0.0
+
+        for holding in holdings:
+            fund_code = holding.fund_code
+            estimation_data = None
+            estimation_data = get_fund_estimation_from_redis(fund_code)
+            if estimation_data is None:
+                estimation_data = get_fund_estimation_from_db(fund_code)
+            if estimation_data is None:
+                estimation_data = get_fund_estimation_from_tian_tian(fund_code)
+
+            current_nav = estimation_data['estimated_nav'] if estimation_data else None
+
+            if current_nav is not None and holding.shares > 0:
+                shares_f = float(holding.shares)
+                cost_price_f = float(holding.cost_price) if holding.cost_price else 0.0
+                current_value = current_nav * shares_f
+                holding_cost = cost_price_f * shares_f
+                total_asset += current_value
+                total_cost += holding_cost
+
+        if total_cost <= 0:
+            total_profit = 0.0
+            total_profit_rate = 0.0
+        else:
+            total_profit = total_asset - total_cost
+            total_profit_rate = (total_profit / total_cost) * 100
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "estimated_total_asset": round(total_asset, 2),
+                "estimated_total_profit": round(total_profit, 2),
+                "estimated_total_profit_rate": round(total_profit_rate, 2),
+                "update_time": datetime.now().isoformat()
+            }
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"获取实时估算汇总失败: {str(e)}"
+        }), 500
+
+
+@holding_bp.route('/get_portfolio_realtime_history', methods=['GET'])
+def get_portfolio_realtime_history():
+    """
+    获取当天的实时估算历史数据（用于绘制折线图）
+    """
+    try:
+        redis_client = get_redis_client()
+        if not redis_client:
+            return jsonify({"success": True, "data": []})
+
+        # 获取今天的日期
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        redis_key = f"portfolio_summary_{today_str}"
+
+        # 获取今天所有的数据（按时间倒序，最多返回500条）
+        result = redis_client.zrevrange(redis_key, 0, 499, withscores=True)
+
+        history_data = []
+        for member, score in result:
+            try:
+                data = json.loads(member)
+                data['timestamp'] = score
+                history_data.append(data)
+            except (json.JSONDecodeError, KeyError):
+                continue
+
+        # 按时间正序排列（旧到新）
+        history_data.sort(key=lambda x: x['timestamp'])
+
+        return jsonify({
+            "success": True,
+            "data": history_data
+        })
+
+    except Exception as e:
+        logger.error(f"获取当天实时估算历史数据失败: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"获取当天实时估算历史数据失败: {str(e)}"
+        }), 500
+
+@holding_bp.route('/get_portfolio_realtime', methods=['GET'])
+def get_portfolio_realtime():
+    """
+    获取实时估算的总资产、总收益、总收益率汇总数据
+    直接从 Redis 读取预计算的结果
+    """
+    try:
+        print("🔍 开始处理 get_portfolio_realtime 请求")
+        redis_client = get_redis_client()
+        if not redis_client:
+            # 如果 Redis 不可用，回退到实时计算
+            print("⚠️ Redis client not available")
+            return fallback_calculate_portfolio_realtime()
+
+        # 从 Redis 获取预计算的汇总数据
+        redis_key = "portfolio_realtime_summary"
+        cached_data = redis_client.get(redis_key)
+        print(f"🔑 Redis key: {redis_key}")
+
+        if cached_data:
+            portfolio_summary = json.loads(cached_data)
+            return jsonify({
+                "success": True,
+                "data": portfolio_summary
+            })
+        else:
+            # 如果缓存不存在，回退到实时计算
+            return fallback_calculate_portfolio_realtime()
+
+    except Exception as e:
+        logger.error(f"获取实时估算汇总失败: {e}")
+        # 最终回退到实时计算
+        return fallback_calculate_portfolio_realtime()

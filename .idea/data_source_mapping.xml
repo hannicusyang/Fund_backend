@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="DataSourcePerFileMappings">
+    <file url="file://$APPLICATION_CONFIG_DIR$/consoles/db/8b1e3ad4-1f70-4888-9b1e-19a9939cf186/console.sql" value="8b1e3ad4-1f70-4888-9b1e-19a9939cf186" />
     <file url="file://$APPLICATION_CONFIG_DIR$/consoles/db/bc5d47d8-1575-4aea-bcb5-c45b47915437/console.sql" value="bc5d47d8-1575-4aea-bcb5-c45b47915437" />
     <file url="file://$APPLICATION_CONFIG_DIR$/consoles/db/bc5d47d8-1575-4aea-bcb5-c45b47915437/console_1.sql" value="bc5d47d8-1575-4aea-bcb5-c45b47915437" />
     <file url="file://$APPLICATION_CONFIG_DIR$/consoles/db/bc5d47d8-1575-4aea-bcb5-c45b47915437/console_10.sql" value="bc5d47d8-1575-4aea-bcb5-c45b47915437" />
     <file url="file://$APPLICATION_CONFIG_DIR$/consoles/db/bc5d47d8-1575-4aea-bcb5-c45b47915437/console_11.sql" value="bc5d47d8-1575-4aea-bcb5-c45b47915437" />
+    <file url="file://$APPLICATION_CONFIG_DIR$/consoles/db/bc5d47d8-1575-4aea-bcb5-c45b47915437/console_12.sql" value="bc5d47d8-1575-4aea-bcb5-c45b47915437" />
+    <file url="file://$APPLICATION_CONFIG_DIR$/consoles/db/bc5d47d8-1575-4aea-bcb5-c45b47915437/console_13.sql" value="bc5d47d8-1575-4aea-bcb5-c45b47915437" />
+    <file url="file://$APPLICATION_CONFIG_DIR$/consoles/db/bc5d47d8-1575-4aea-bcb5-c45b47915437/console_14.sql" value="bc5d47d8-1575-4aea-bcb5-c45b47915437" />
+    <file url="file://$APPLICATION_CONFIG_DIR$/consoles/db/bc5d47d8-1575-4aea-bcb5-c45b47915437/console_15.sql" value="bc5d47d8-1575-4aea-bcb5-c45b47915437" />
     <file url="file://$APPLICATION_CONFIG_DIR$/consoles/db/bc5d47d8-1575-4aea-bcb5-c45b47915437/console_2.sql" value="bc5d47d8-1575-4aea-bcb5-c45b47915437" />
     <file url="file://$APPLICATION_CONFIG_DIR$/consoles/db/bc5d47d8-1575-4aea-bcb5-c45b47915437/console_3.sql" value="bc5d47d8-1575-4aea-bcb5-c45b47915437" />
     <file url="file://$APPLICATION_CONFIG_DIR$/consoles/db/bc5d47d8-1575-4aea-bcb5-c45b47915437/console_4.sql" value="bc5d47d8-1575-4aea-bcb5-c45b47915437" />
