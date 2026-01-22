@@ -3,7 +3,7 @@ from . import db
 from datetime import datetime
 
 
-class FundBasic(db.Model):
+class FundList(db.Model):
     __tablename__ = 'fund_list'
 
     fund_code = db.Column(db.String(20), primary_key=True, comment='基金代码')
@@ -14,4 +14,4 @@ class FundBasic(db.Model):
     update_time = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def __repr__(self):
-        return f"<FundBasic {self.fund_code}: {self.fund_name}>"
+        return f"<FundList {self.fund_code}: {self.fund_name}>"

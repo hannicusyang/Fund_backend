@@ -8,7 +8,7 @@ from datetime import datetime, date, timedelta
 from config.logging_config import logger
 from models import db
 from models.fund_nav_history import FundNavHistory
-from models.fund_list import FundBasic
+from models.fund_list import FundList
 from models.fund_watchlist import FundWatchlist
 import sys
 
@@ -55,7 +55,7 @@ def _is_fund_up_to_date(fund_code: str) -> bool:
 # ========== 以下函数保持不变 ==========
 def _get_fund_name(fund_code: str) -> str:
     try:
-        fund = db.session.get(FundBasic, fund_code)
+        fund = db.session.get(FundList, fund_code)
         return fund.fund_name if fund else fund_code
     except Exception as e:
         logger.warning(f"查询基金名称失败 {fund_code}: {e}")

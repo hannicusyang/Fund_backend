@@ -1,10 +1,12 @@
 # tasks/fund_basic_sync.py
+from datetime import datetime, timezone
+
 import akshare as ak
 import pandas as pd
 import logging
 from config.logging_config import logger
 from models import db
-from models.fund_list import FundBasic
+from models.fund_list import FundList
 
 
 def fetch_fund_data():
@@ -34,36 +36,33 @@ def fetch_fund_data():
 
 
 def sync_fund_basic_info():
-    """同步基金基础信息到数据库（全量覆盖）"""
     try:
-        # 延迟导入 app（避免循环导入）
         from app import app
-
         with app.app_context():
             df = fetch_fund_data()
 
-            # 方案：先清空表，再批量插入（模拟 to_sql(if_exists='replace')）
-            # 注意：这会丢失 update_time 的历史记录，但符合原逻辑
-            db.session.execute(db.delete(FundBasic))
+            # 清空表
+            db.session.execute(db.delete(FundList))
             db.session.commit()
 
-            # 构建对象列表
+            # 获取当前 UTC 时间（用于所有记录）
+            current_time = datetime.now(timezone.utc)  # ← 关键：统一时间戳
+
             records = []
             for _, row in df.iterrows():
-                record = FundBasic(
+                record = FundList(
                     fund_code=row['fund_code'],
                     pinyin_abbr=row['pinyin_abbr'],
                     fund_name=row['fund_name'],
                     fund_type=row['fund_type'],
-                    pinyin_full=row['pinyin_full']
+                    pinyin_full=row['pinyin_full'],
+                    update_time=current_time  # ← 显式赋值！
                 )
                 records.append(record)
 
-            # 批量插入
             db.session.bulk_save_objects(records)
             db.session.commit()
             logger.info(f"✅ 基金基础信息同步完成，共写入 {len(records)} 条记录。")
-
     except Exception as e:
         db.session.rollback()
         logger.error(f"❌ 基金基础信息同步失败: {e}", exc_info=True)
