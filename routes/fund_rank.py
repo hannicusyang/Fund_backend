@@ -2,7 +2,8 @@
 from flask import Blueprint, request, jsonify
 from models import db
 from models.fund_open_rank import FundOpenRankAll
-
+import  akshare as ak
+import pandas as pd
 fund_rank_bp = Blueprint('fund_rank', __name__)
 
 # 排序字段白名单（仅允许安全字段）
@@ -116,4 +117,38 @@ def get_fund_rank_list():
         return jsonify({
             "success": False,
             "message": f"查询失败: {str(e)}"
+        }), 500
+
+
+@fund_rank_bp.route('/detail/<fund_code>', methods=['GET'])
+def get_fund_detail(fund_code):
+    try:
+        # 调用 akshare 接口获取基金详情
+        df = ak.fund_individual_basic_info_xq(symbol=fund_code)
+
+        if df.empty:
+            return jsonify({
+                'success': False,
+                'message': '未找到基金信息'
+            }), 404
+
+        print(f"正在获取基金详情: {fund_code}")
+
+        # 转换为字典格式
+        fund_info = {}
+        for _, row in df.iterrows():
+            key = str(row['item']) if pd.notna(row['item']) else ''
+            value = str(row['value']) if pd.notna(row['value']) else ''
+            fund_info[key] = value
+
+        return jsonify({
+            'success': True,
+            'data': fund_info
+        })
+
+    except Exception as e:
+        print(f"获取基金详情失败 {fund_code}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': '获取基金详情失败，请稍后重试'
         }), 500

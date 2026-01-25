@@ -410,6 +410,98 @@ def update_holding():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+@holding_bp.route('/fund-estimation-history/<fund_code>', methods=['GET'])
+def get_fund_estimation_history(fund_code):
+    """
+    查询某个基金当天的所有估值数据（用于绘制基金实时估值折线图）
+
+    Args:
+        fund_code (str): 基金代码
+
+    Query Params:
+        date (str): 日期，格式 YYYY-MM-DD，默认为今天
+
+    Returns:
+        {
+            "success": True,
+            "data": [
+                {
+                    "fetch_time": "2024-01-20T10:30:00",
+                    "timestamp": 1705737600.0,
+                    "estimated_nav": 1.2345,
+                    "daily_growth_rate": 1.23,
+                    "last_nav": 1.2200,
+                    "estimation_date": "2024-01-20"
+                },
+                ...
+            ]
+        }
+    """
+    try:
+        # 获取查询参数
+        query_date_str = request.args.get('date')
+
+        if query_date_str:
+            try:
+                query_date = datetime.strptime(query_date_str, "%Y-%m-%d").date()
+            except ValueError:
+                return jsonify({
+                    "success": False,
+                    "message": "日期格式无效，请使用 YYYY-MM-DD 格式"
+                }), 400
+        else:
+            # 默认查询今天
+            query_date = datetime.utcnow().date()
+
+        # 查询该基金在指定日期的所有估值记录
+        # 注意：estimation_date 是估算所针对的日期 (T日)
+        # 而 fetch_time 是实际抓取的时间
+        estimation_records = FundEstimation.query.filter(
+            and_(
+                FundEstimation.fund_code == fund_code,
+                FundEstimation.estimation_date == query_date
+            )
+        ).order_by(FundEstimation.fetch_time).all()
+
+        if not estimation_records:
+            return jsonify({
+                "success": True,
+                "data": []
+            })
+
+        # 构建响应数据
+        estimation_history = []
+        for record in estimation_records:
+            # 确保必要的字段不为空
+            if record.estimated_nav is None:
+                continue
+
+            estimation_item = {
+                "fetch_time": record.fetch_time.isoformat() if record.fetch_time else None,
+                "timestamp": record.fetch_time.timestamp() if record.fetch_time else None,
+                "estimated_nav": float(record.estimated_nav),
+                "daily_growth_rate": float(record.estimated_growth_rate) if record.estimated_growth_rate else None,
+                "last_nav": float(record.last_nav) if record.last_nav else None,
+                "estimation_date": record.estimation_date.isoformat() if record.estimation_date else None,
+                "published_nav": float(record.published_nav) if record.published_nav else None,
+                "published_growth_rate": float(record.published_growth_rate) if record.published_growth_rate else None
+            }
+            estimation_history.append(estimation_item)
+
+        return jsonify({
+            "success": True,
+            "data": estimation_history
+        })
+
+    except Exception as e:
+        error_msg = f"获取基金估值历史失败 {fund_code}: {str(e)}"
+        print(error_msg)
+        return jsonify({
+            "success": False,
+            "message": "获取基金估值历史数据失败"
+        }), 500
+
+
 @holding_bp.route('/portfolio-history', methods=['GET'])
 def get_portfolio_history():
     """
@@ -612,7 +704,6 @@ def get_portfolio_realtime():
     直接从 Redis 读取预计算的结果
     """
     try:
-        print("🔍 开始处理 get_portfolio_realtime 请求")
         redis_client = get_redis_client()
         if not redis_client:
             # 如果 Redis 不可用，回退到实时计算
@@ -622,7 +713,6 @@ def get_portfolio_realtime():
         # 从 Redis 获取预计算的汇总数据
         redis_key = "portfolio_realtime_summary"
         cached_data = redis_client.get(redis_key)
-        print(f"🔑 Redis key: {redis_key}")
 
         if cached_data:
             portfolio_summary = json.loads(cached_data)
