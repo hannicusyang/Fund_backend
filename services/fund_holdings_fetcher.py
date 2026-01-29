@@ -55,7 +55,7 @@ def fetch_fund_holdings(fund_code: str, year: str) -> dict:
                 'proportion_of_nav': row['proportion_of_nav'],
                 'shares_held': row['shares_held'],
                 'market_value': row['market_value'],
-                'quarter': quarter_std,  # 标准化如 "2025Q4"
+                'quarter': row['quarter'],  # 标准化如 "2025Q4"
                 'report_date': report_date,  # 如 "2025-12-31"
             }
             holdings.append(holding)
