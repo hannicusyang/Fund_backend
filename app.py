@@ -15,6 +15,8 @@ from tasks.fund_estimation_scheduler import fetch_and_save_fund_estimation
 from tasks.fund_open_daily import fund_open_synchronization
 from tasks.fund_history_to_mysql import fetch_and_save_fund_history
 from tasks.fund_history_to_mysql import sync_all_watched_funds
+from tasks.sync_stock_market_overview import sync_all_stock_overview
+
 app = Flask(__name__)
 CORS(app)
 app.config.from_object(AppConfig)
@@ -34,6 +36,8 @@ scheduler.add_job(sync_fund_basic_info, 'cron', hour=0, minute=10)
 scheduler.add_job(fund_open_synchronization, 'cron', id='fund_open_sync', hour=0, minute=30)
 scheduler.add_job(fetch_and_save_fund_estimation, trigger=IntervalTrigger(minutes=3), id='fund_estimation_job', replace_existing=True,max_instances=2)
 scheduler.add_job(sync_all_watched_funds, 'cron', id='fund_watched_sync', hour=0, minute=40)
+scheduler.add_job(sync_all_stock_overview, 'cron', hour=16, minute=30)
+
 
 # ✅ 关键修复：在这里局部导入，避免顶层循环
 scheduler.add_job(
@@ -54,10 +58,12 @@ atexit.register(lambda: scheduler.shutdown())
 from routes.watchlist import watchlist_bp
 from routes.fund_rank import fund_rank_bp
 from routes.fund_detail import fund_detail_bp
+from routes.stock_market_overview import stock_overview_bp
 app.register_blueprint(watchlist_bp, url_prefix='/api/watchlist')
 app.register_blueprint(fund_rank_bp, url_prefix='/api/funds')
 app.register_blueprint(holding_bp, url_prefix='/api/holding')
 app.register_blueprint(fund_detail_bp, url_prefix='/api/fund_detail')
+app.register_blueprint(stock_overview_bp, url_prefix='/api/stock')
 # ====== 路由（保持原样）======
 @app.route('/api/run-task')
 def manual_run():

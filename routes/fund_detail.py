@@ -362,7 +362,7 @@ def get_latest_quarter_info():
         }), 500
 
 
-@fund_detail_bp.route.route('/api/fund/<fund_code>/moving-averages', methods=['GET'])
+@fund_detail_bp.route('/detail/moving-averages/<fund_code>', methods=['GET'])
 def get_fund_moving_averages(fund_code):
     """
     获取基金的历史净值和移动平均线数据（5日、10日、30日）
@@ -482,7 +482,7 @@ def get_fund_moving_averages(fund_code):
         }), 500
 
 
-@fund_detail_bp.route.route('/api/fund/<fund_code>/current-moving-averages', methods=['GET'])
+@fund_detail_bp.route('/detail/current-moving-averages/<fund_code>', methods=['GET'])
 def get_fund_current_moving_averages(fund_code):
     """
     获取基金当前的移动平均线值（仅返回最新值，不包含历史数据）
