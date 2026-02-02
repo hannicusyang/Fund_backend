@@ -1,22 +1,11 @@
-# models/stock_market_overview.py
+# models/stock_market_models_overview.py
 from datetime import date
 from . import db
 
 class StockSSESummary(db.Model):
     __tablename__ = 'stock_sse_summary'
-
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    trade_date = db.Column(db.Date, unique=True, nullable=False, index=True) # 用交易日期作为唯一标识
-
-    # SSE Summary 的数据字段 (根据实际数据类型调整)
-    # 股票
-    stock_circulating_capital = db.Column(db.Float) # 流通股本
-    stock_total_mv = db.Column(db.Float) # 总市值
-    stock_avg_pe = db.Column(db.Float) # 平均市盈率
-    stock_companies = db.Column(db.Integer) # 上市公司
-    stock_stocks = db.Column(db.Integer) # 上市股票
-    stock_circulating_mv = db.Column(db.Float) # 流通市值
-    stock_total_capital = db.Column(db.Float) # 总股本
+    trade_date = db.Column(db.Date, unique=True, nullable=False, index=True)
 
     # 科创板
     star_circulating_capital = db.Column(db.Float)
@@ -27,7 +16,7 @@ class StockSSESummary(db.Model):
     star_circulating_mv = db.Column(db.Float)
     star_total_capital = db.Column(db.Float)
 
-    # 主板
+    # 主板（含原中小板）
     main_circulating_capital = db.Column(db.Float)
     main_total_mv = db.Column(db.Float)
     main_avg_pe = db.Column(db.Float)
@@ -41,15 +30,6 @@ class StockSSESummary(db.Model):
     def to_dict(self):
         return {
             "trade_date": self.trade_date.isoformat() if self.trade_date else None,
-            "stock": {
-                "circulating_capital": self.stock_circulating_capital,
-                "total_mv": self.stock_total_mv,
-                "avg_pe": self.stock_avg_pe,
-                "companies": self.stock_companies,
-                "stocks": self.stock_stocks,
-                "circulating_mv": self.stock_circulating_mv,
-                "total_capital": self.stock_total_capital,
-            },
             "star_board": {
                 "circulating_capital": self.star_circulating_capital,
                 "total_mv": self.star_total_mv,
