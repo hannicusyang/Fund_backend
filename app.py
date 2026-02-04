@@ -59,11 +59,15 @@ from routes.watchlist import watchlist_bp
 from routes.fund_rank import fund_rank_bp
 from routes.fund_detail import fund_detail_bp
 from routes.stock_market_overview import stock_overview_bp
+from routes.stock_watchlist import stock_watchlist_bp
+from routes.stock_realtime import stock_realtime_bp
 app.register_blueprint(watchlist_bp, url_prefix='/api/watchlist')
 app.register_blueprint(fund_rank_bp, url_prefix='/api/funds')
 app.register_blueprint(holding_bp, url_prefix='/api/holding')
 app.register_blueprint(fund_detail_bp, url_prefix='/api/fund_detail')
 app.register_blueprint(stock_overview_bp, url_prefix='/api/stock')
+app.register_blueprint(stock_watchlist_bp, url_prefix='/api/stock/watchlist')
+app.register_blueprint(stock_realtime_bp, url_prefix='/api/stock')
 # ====== 路由（保持原样）======
 @app.route('/api/run-task')
 def manual_run():

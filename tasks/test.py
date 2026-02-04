@@ -1,4 +1,4 @@
 import akshare as ak
 
-stock_szse_sector_summary_df = ak.stock_szse_sector_summary(symbol="当月", date="202601")
-print(stock_szse_sector_summary_df)
+stock_zh_a_spot_em_df = ak.stock_zh_a_spot_em()
+print(stock_zh_a_spot_em_df)

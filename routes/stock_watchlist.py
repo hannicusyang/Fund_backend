@@ -1,6 +1,5 @@
 from flask import Blueprint, jsonify, request
-from models import db
-from models.stock_watchlist import StockWatchlist
+from models import db, StockWatchlist
 
 stock_watchlist_bp = Blueprint('stock_watchlist', __name__)
 

@@ -9,3 +9,4 @@ from .fund_estimation import FundEstimation  # ← 新增
 from .fund_list import FundList
 from .fund_nav_history import FundNavHistory
 from .fund_open_rank import FundOpenRankAll
+from .stock_watchlist import StockWatchlist  # ← 新增股票自选
