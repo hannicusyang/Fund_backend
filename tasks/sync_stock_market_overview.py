@@ -327,6 +327,65 @@ def sync_szse_sector_summary(period_str):
         logger.exception(f"Failed to sync SZSE Sector Summary: {e}")
         db.session.rollback()
 
+def sync_szse_sector_month_summary(period_str):
+    """同步 SZSE Sector Summary，使用指定报告期"""
+    logger.info(f"Starting SZSE Sector Summary synchronization for {period_str} ('当月')...")
+    try:
+        from app import app
+        with app.app_context():
+            if not period_str:
+                logger.error("No period provided for SZSE Sector Summary.")
+                return
+
+            if StockSZSESectorSummary.query.filter_by(report_period=period_str, symbol='当月').count() > 0:
+                logger.info(f"SZSE Sector Summary for {period_str} ('当月') exists, skipping.")
+                return
+
+            logger.info(f"Fetching SZSE Sector Summary for {period_str}, symbol '当月'...")
+            try:
+                df = ak.stock_szse_sector_summary(symbol="当月", date=period_str)
+            except Exception as e:
+                logger.error(f"AKShare error for SZSE Sector on {period_str}: {e}")
+                return
+
+            if df is None or df.empty:
+                logger.error("AKShare returned empty data for SZSE Sector Summary.")
+                return
+
+            StockSZSESectorSummary.query.filter_by(report_period=period_str, symbol='当月').delete()
+            records = []
+            for _, row in df.iterrows():
+                def safe_int(val):
+                    return int(val) if pd.notna(val) else None
+                def safe_float(val):
+                    return float(val) if pd.notna(val) else None
+
+                record = StockSZSESectorSummary(
+                    report_period=period_str,
+                    symbol='当月',
+                    sector_chinese=row['项目名称'],
+                    sector_english=row['项目名称-英文'],
+                    trading_days=safe_int(row['交易天数']),
+                    turnover_amount_cny=safe_int(row['成交金额-人民币元']),
+                    turnover_amount_pct=safe_float(row['成交金额-占总计']),
+                    volume_shares=safe_int(row['成交股数-股数']),
+                    volume_shares_pct=safe_float(row['成交股数-占总计']),
+                    deal_count=safe_int(row['成交笔数-笔']),
+                    deal_count_pct=safe_float(row['成交笔数-占总计']),
+                )
+                records.append(record)
+
+            if records:
+                db.session.bulk_save_objects(records)
+                db.session.commit()
+                logger.info(f"Synced SZSE Sector Summary for {period_str} ('当月'), {len(records)} records.")
+            else:
+                logger.warning("No records generated for SZSE Sector Summary.")
+
+    except Exception as e:
+        logger.exception(f"Failed to sync SZSE Sector Summary: {e}")
+        db.session.rollback()
+
 
 def sync_sse_deal_daily():
     logger.info("Starting SSE Deal Daily synchronization...")
@@ -418,6 +477,7 @@ def sync_all_stock_overview():
     if monthly_period:
         sync_szse_area_summary(monthly_period)
         sync_szse_sector_summary(monthly_period)
+        sync_szse_sector_month_summary(monthly_period)
     else:
         logger.warning("Skipping monthly SZSE summaries due to no available data.")
 
