@@ -1,4 +1,4 @@
 import akshare as ak
 
-stock_zh_a_spot_em_df = ak.stock_zh_a_spot_em()
-print(stock_zh_a_spot_em_df)
+stock_zh_kcb_spot_df = ak.stock_zh_kcb_spot()
+print(stock_zh_kcb_spot_df)

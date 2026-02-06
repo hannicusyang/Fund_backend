@@ -16,6 +16,7 @@ from tasks.fund_open_daily import fund_open_synchronization
 from tasks.fund_history_to_mysql import fetch_and_save_fund_history
 from tasks.fund_history_to_mysql import sync_all_watched_funds
 from tasks.sync_stock_market_overview import sync_all_stock_overview
+from tasks.sync_stock_realtime import sync_stock_realtime  # ← 新增股票实时行情同步
 
 app = Flask(__name__)
 CORS(app)
@@ -37,6 +38,7 @@ scheduler.add_job(fund_open_synchronization, 'cron', id='fund_open_sync', hour=0
 scheduler.add_job(fetch_and_save_fund_estimation, trigger=IntervalTrigger(minutes=3), id='fund_estimation_job', replace_existing=True,max_instances=2)
 scheduler.add_job(sync_all_watched_funds, 'cron', id='fund_watched_sync', hour=0, minute=40)
 scheduler.add_job(sync_all_stock_overview, 'cron', hour=16, minute=30)
+scheduler.add_job(sync_stock_realtime, trigger=IntervalTrigger(minutes=1), id='stock_realtime_job', replace_existing=True, max_instances=1)  # ← 每分钟同步股票实时行情
 
 
 # ✅ 关键修复：在这里局部导入，避免顶层循环
