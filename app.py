@@ -9,6 +9,7 @@ from config import AppConfig
 from flask_cors import CORS
 
 from routes.my_fund_holding import holding_bp
+from routes.fund_model import fund_model_bp
 # ====== 您的任务模块（先不导入 sync_fund_holdings_quarterly）======
 from tasks.fund_basic_sync import sync_fund_basic_info
 from tasks.fund_estimation_scheduler import fetch_and_save_fund_estimation
@@ -70,6 +71,7 @@ app.register_blueprint(fund_detail_bp, url_prefix='/api/fund_detail')
 app.register_blueprint(stock_overview_bp, url_prefix='/api/stock')
 app.register_blueprint(stock_watchlist_bp, url_prefix='/api/stock/watchlist')
 app.register_blueprint(stock_realtime_bp, url_prefix='/api/stock')
+app.register_blueprint(fund_model_bp, url_prefix='/api/model')
 # ====== 路由（保持原样）======
 @app.route('/api/run-task')
 def manual_run():

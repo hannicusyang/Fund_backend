@@ -39,39 +39,35 @@ def retry_on_failure(max_retries=MAX_RETRIES, delay=RETRY_DELAY):
     return decorator
 
 
-@retry_on_failure(max_retries=2, delay=1)
-def fetch_from_sina():
-    """从新浪获取实时行情"""
-    print("[数据源] 尝试从新浪获取...")
-    df = ak.stock_zh_a_spot()
-    print(f"[数据源] 新浪获取成功，共 {len(df)} 条")
-    return df, 'sina'
-
-
-@retry_on_failure(max_retries=2, delay=1)
-def fetch_from_em():
-    """从东方财富获取实时行情"""
-    print("[数据源] 尝试从东方财富获取...")
-    df = ak.stock_zh_a_spot_em()
-    print(f"[数据源] 东方财富获取成功，共 {len(df)} 条")
-    return df, 'eastmoney'
-
-
 def fetch_from_api():
-    """从外部API获取股票数据"""
+    """从外部API获取股票数据 - 多数据源策略"""
+    import requests
     errors = []
     
-    try:
-        return fetch_from_sina()
-    except Exception as e:
-        errors.append(f"新浪: {str(e)}")
-        print(f"新浪接口失败: {e}")
+    # 数据源列表，按优先级排序
+    # 东方财富数据最丰富，雪球/同花顺次之，新浪近期容易限流返回HTML错误页
+    data_sources = [
+        ('东方财富', 'eastmoney', lambda: ak.stock_zh_a_spot_em()),
+        ('腾讯', 'tencent', lambda: ak.stock_zh_a_spot_tx()),
+        ('雪球', 'xueqiu', lambda: ak.stock_zh_a_spot_xq()),
+        ('同花顺', 'ths', lambda: ak.stock_zh_a_spot_ths()),
+        ('新浪1', 'sina', lambda: ak.stock_zh_a_spot()),
+        ('新浪2', 'sina_s', lambda: ak.stock_zh_a_spot_sina()),
+    ]
     
-    try:
-        return fetch_from_em()
-    except Exception as e:
-        errors.append(f"东方财富: {str(e)}")
-        print(f"东方财富接口失败: {e}")
+    for name, source_id, fetch_func in data_sources:
+        try:
+            print(f"[数据源] 尝试从{name}获取...")
+            df = fetch_func()
+            print(f"[数据源] {name}获取成功，共 {len(df)} 条")
+            return df, source_id
+        except requests.exceptions.ConnectionError:
+            errors.append(f"{name}连接失败")
+            print(f"[数据源] {name}连接失败")
+        except Exception as e:
+            error_msg = str(e)[:40]
+            errors.append(f"{name}:{error_msg}")
+            print(f"[数据源] {name}失败: {error_msg}")
     
     raise Exception(f"所有数据源都失败: {'; '.join(errors)}")
 
@@ -165,65 +161,93 @@ def get_cached_api_data():
 
 
 def df_to_api_format(df, source):
-    """将DataFrame转换为API格式"""
+    """将DataFrame转换为API格式 - 支持多数据源"""
     result = []
+    
+    # 各数据源列名映射
+    column_maps = {
+        'sina': {
+            'code': '代码', 'name': '名称', 'latest_price': '最新价',
+            'change_amount': '涨跌额', 'change_percent': '涨跌幅',
+            'prev_close': '昨收', 'open': '今开', 'high': '最高', 'low': '最低',
+            'volume': '成交量', 'turnover': '成交额', 'turnover_rate': '换手率'
+        },
+        'sina_s': {
+            'code': '代码', 'name': '名称', 'latest_price': '最新价',
+            'change_amount': '涨跌额', 'change_percent': '涨跌幅',
+            'prev_close': '昨收', 'open': '今开', 'high': '最高', 'low': '最低',
+            'volume': '成交量', 'turnover': '成交额', 'turnover_rate': '换手率'
+        },
+        'eastmoney': {
+            'code': '代码', 'name': '名称', 'latest_price': '最新价',
+            'change_percent': '涨跌幅', 'change_amount': '涨跌额',
+            'volume': '成交量', 'turnover': '成交额', 'amplitude': '振幅',
+            'high': '最高', 'low': '最低', 'open': '今开', 'prev_close': '昨收',
+            'volume_ratio': '量比', 'turnover_rate': '换手率',
+            'pe_dynamic': '市盈率-动态', 'pb_ratio': '市净率',
+            'total_market_cap': '总市值', 'circulating_market_cap': '流通市值',
+            'change_speed': '涨速', 'change_5min': '5分钟涨跌',
+            'change_60d': '60日涨跌幅', 'change_ytd': '年初至今涨跌幅'
+        },
+        'tencent': {
+            'code': '代码', 'name': '名称', 'latest_price': '最新价',
+            'change_amount': '涨跌额', 'change_percent': '涨跌幅',
+            'prev_close': '昨收', 'open': '今开', 'high': '最高', 'low': '最低',
+            'volume': '成交量', 'turnover': '成交额'
+        },
+        'xueqiu': {
+            'code': '代码', 'name': '名称', 'latest_price': '最新价',
+            'change_percent': '涨跌幅', 'change_amount': '涨跌额',
+            'volume': '成交量', 'turnover': '成交额',
+            'high': '最高', 'low': '最低', 'open': '今开', 'prev_close': '昨收',
+            'turnover_rate': '换手率', 'pe_ttm': '市盈率(TTM)',
+            'total_market_cap': '总市值', 'circulating_market_cap': '流通市值'
+        },
+        'ths': {
+            'code': '代码', 'name': '名称', 'latest_price': '最新价',
+            'change_percent': '涨跌幅', 'change_amount': '涨跌额',
+            'volume': '成交量', 'turnover': '成交额',
+            'high': '最高', 'low': '最低', 'open': '今开', 'prev_close': '昨收',
+            'turnover_rate': '换手率', 'pe': '市盈率',
+            'total_market_cap': '总市值', 'circulating_market_cap': '流通市值'
+        }
+    }
+    
+    col_map = column_maps.get(source, column_maps['eastmoney'])
     
     for _, row in df.iterrows():
         try:
-            if source == 'sina':
-                # 新浪格式
-                item = {
-                    'index': 0,
-                    'code': str(row.get('代码', '')).replace('sh', '').replace('sz', ''),
-                    'name': str(row.get('名称', '')),
-                    'latest_price': _parse_float(row.get('最新价')),
-                    'change_amount': _parse_float(row.get('涨跌额')),
-                    'change_percent': _parse_float(row.get('涨跌幅')),
-                    'prev_close': _parse_float(row.get('昨收')),
-                    'open': _parse_float(row.get('今开')),
-                    'high': _parse_float(row.get('最高')),
-                    'low': _parse_float(row.get('最低')),
-                    'volume': _parse_float(row.get('成交量')),
-                    'turnover': _parse_float(row.get('成交额')),
-                    'turnover_rate': _parse_float(row.get('换手率')),
-                    'amplitude': None,
-                    'volume_ratio': None,
-                    'pe_dynamic': None,
-                    'pb_ratio': None,
-                    'total_market_cap': None,
-                    'circulating_market_cap': None,
-                    'change_speed': None,
-                    'change_5min': None,
-                    'change_60d': None,
-                    'change_ytd': None,
-                }
-            else:
-                # 东方财富格式
-                item = {
-                    'index': int(row['序号']) if '序号' in row and pd.notna(row['序号']) else 0,
-                    'code': str(row['代码']) if '代码' in row and pd.notna(row['代码']) else '',
-                    'name': str(row['名称']) if '名称' in row and pd.notna(row['名称']) else '',
-                    'latest_price': _parse_float(row.get('最新价')),
-                    'change_percent': _parse_float(row.get('涨跌幅')),
-                    'change_amount': _parse_float(row.get('涨跌额')),
-                    'volume': _parse_float(row.get('成交量')),
-                    'turnover': _parse_float(row.get('成交额')),
-                    'amplitude': _parse_float(row.get('振幅')),
-                    'high': _parse_float(row.get('最高')),
-                    'low': _parse_float(row.get('最低')),
-                    'open': _parse_float(row.get('今开')),
-                    'prev_close': _parse_float(row.get('昨收')),
-                    'volume_ratio': _parse_float(row.get('量比')),
-                    'turnover_rate': _parse_float(row.get('换手率')),
-                    'pe_dynamic': _parse_float(row.get('市盈率-动态')),
-                    'pb_ratio': _parse_float(row.get('市净率')),
-                    'total_market_cap': _parse_float(row.get('总市值')),
-                    'circulating_market_cap': _parse_float(row.get('流通市值')),
-                    'change_speed': _parse_float(row.get('涨速')),
-                    'change_5min': _parse_float(row.get('5分钟涨跌')),
-                    'change_60d': _parse_float(row.get('60日涨跌幅')),
-                    'change_ytd': _parse_float(row.get('年初至今涨跌幅')),
-                }
+            # 清理代码（去除sh/sz前缀）
+            code = str(row.get(col_map['code'], ''))
+            # 移除 sh/sz 前缀（新浪、雪球、同花顺等可能有）
+            code = code.replace('sh', '').replace('sz', '').replace('SH', '').replace('SZ', '')
+            
+            item = {
+                'index': 0,
+                'code': code,
+                'name': str(row.get(col_map['name'], '')),
+                'latest_price': _parse_float(row.get(col_map.get('latest_price'))),
+                'change_percent': _parse_float(row.get(col_map.get('change_percent'))),
+                'change_amount': _parse_float(row.get(col_map.get('change_amount'))),
+                'volume': _parse_float(row.get(col_map.get('volume'))),
+                'turnover': _parse_float(row.get(col_map.get('turnover'))),
+                'high': _parse_float(row.get(col_map.get('high'))),
+                'low': _parse_float(row.get(col_map.get('low'))),
+                'open': _parse_float(row.get(col_map.get('open'))),
+                'prev_close': _parse_float(row.get(col_map.get('prev_close'))),
+                'turnover_rate': _parse_float(row.get(col_map.get('turnover_rate'))),
+                # 以下字段可能不存在，设为None
+                'amplitude': _parse_float(row.get(col_map.get('amplitude'))) if 'amplitude' in col_map else None,
+                'volume_ratio': _parse_float(row.get(col_map.get('volume_ratio'))) if 'volume_ratio' in col_map else None,
+                'pe_dynamic': _parse_float(row.get(col_map.get('pe_dynamic'))) if 'pe_dynamic' in col_map else None,
+                'pb_ratio': _parse_float(row.get(col_map.get('pb_ratio'))) if 'pb_ratio' in col_map else None,
+                'total_market_cap': _parse_float(row.get(col_map.get('total_market_cap'))) if 'total_market_cap' in col_map else None,
+                'circulating_market_cap': _parse_float(row.get(col_map.get('circulating_market_cap'))) if 'circulating_market_cap' in col_map else None,
+                'change_speed': _parse_float(row.get(col_map.get('change_speed'))) if 'change_speed' in col_map else None,
+                'change_5min': _parse_float(row.get(col_map.get('change_5min'))) if 'change_5min' in col_map else None,
+                'change_60d': _parse_float(row.get(col_map.get('change_60d'))) if 'change_60d' in col_map else None,
+                'change_ytd': _parse_float(row.get(col_map.get('change_ytd'))) if 'change_ytd' in col_map else None,
+            }
             result.append(item)
         except Exception as e:
             continue
