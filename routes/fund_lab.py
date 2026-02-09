@@ -351,14 +351,16 @@ def quick_filter_funds(filter_type):
 @fund_lab_bp.route('/analysis/returns/<fund_codes>', methods=['GET'])
 def get_funds_return_analysis(fund_codes):
     """
-    获取多只基金的历史收益率数据（用于对比分析）n    
+    获取多只基金的历史收益率数据（用于对比分析）
+    如果数据库中数据不足，会自动从akshare获取并保存
+
     Args:
         fund_codes: 逗号分隔的基金代码列表，如"000001,000002"
-    
+
     Query Params:
         start_date (str): 开始日期 YYYY-MM-DD
         end_date (str): 结束日期 YYYY-MM-DD
-    
+
     Returns:
         各基金的历史净值和收益率数据
     """
@@ -366,24 +368,96 @@ def get_funds_return_analysis(fund_codes):
         codes = fund_codes.split(',')
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
-        
+
         if not end_date:
             end_date = datetime.now().strftime('%Y-%m-%d')
         if not start_date:
             # 默认获取近一年数据
             start = datetime.strptime(end_date, '%Y-%m-%d') - timedelta(days=365)
             start_date = start.strftime('%Y-%m-%d')
-        
+
         result = {}
         for code in codes:
-            query = FundNavHistory.query.filter(
+            # 先查询数据库
+            records = FundNavHistory.query.filter(
                 FundNavHistory.fund_code == code,
                 FundNavHistory.nav_date >= start_date,
                 FundNavHistory.nav_date <= end_date
-            ).order_by(FundNavHistory.nav_date.asc())
-            
-            records = query.all()
-            
+            ).order_by(FundNavHistory.nav_date.asc()).all()
+
+            # 检查数据是否完整（缺失天数超过10%则认为不完整）
+            expected_days = (datetime.strptime(end_date, '%Y-%m-%d') -
+                           datetime.strptime(start_date, '%Y-%m-%d')).days
+            actual_days = len(records)
+            data_complete = actual_days >= expected_days * 0.9
+
+            if not data_complete:
+                # 从akshare获取数据
+                try:
+                    import akshare as ak
+
+                    # 获取基金历史净值
+                    df = ak.fund_open_fund_info_em(symbol=code, indicator="单位净值走势")
+
+                    if df is not None and not df.empty:
+                        # 重命名列
+                        df = df.rename(columns={
+                            '净值日期': 'nav_date',
+                            '单位净值': 'net_value',
+                            '日增长率': 'daily_growth_rate'
+                        })
+
+                        # 转换日期格式
+                        df['nav_date'] = pd.to_datetime(df['nav_date'])
+
+                        # 过滤时间范围
+                        df = df[(df['nav_date'] >= start_date) & (df['nav_date'] <= end_date)]
+
+                        # 保存到数据库
+                        for _, row in df.iterrows():
+                            # 检查是否已存在
+                            existing = FundNavHistory.query.filter_by(
+                                fund_code=code,
+                                nav_date=row['nav_date'].date()
+                            ).first()
+
+                            if not existing:
+                                # 获取基金名称
+                                fund_info = FundOpenRankAll.query.filter_by(fund_code=code).first()
+                                fund_name = fund_info.fund_name if fund_info else code
+
+                                # 处理日增长率（可能是float或带%的字符串）
+                                growth_rate = row['daily_growth_rate']
+                                if pd.notna(growth_rate) and growth_rate != '-':
+                                    if isinstance(growth_rate, str):
+                                        growth_rate = float(growth_rate.replace('%', ''))
+                                    else:
+                                        growth_rate = float(growth_rate)
+                                else:
+                                    growth_rate = None
+
+                                nav_record = FundNavHistory(
+                                    fund_code=code,
+                                    nav_date=row['nav_date'].date(),
+                                    fund_name=fund_name,
+                                    net_value=float(row['net_value']) if pd.notna(row['net_value']) else None,
+                                    daily_growth_rate=growth_rate
+                                )
+                                db.session.add(nav_record)
+
+                        db.session.commit()
+
+                        # 重新查询
+                        records = FundNavHistory.query.filter(
+                            FundNavHistory.fund_code == code,
+                            FundNavHistory.nav_date >= start_date,
+                            FundNavHistory.nav_date <= end_date
+                        ).order_by(FundNavHistory.nav_date.asc()).all()
+
+                except Exception as ak_error:
+                    print(f"从akshare获取{code}数据失败: {ak_error}")
+                    # 继续，使用数据库中已有数据
+
             if records:
                 result[code] = {
                     'fund_name': records[0].fund_name,
@@ -393,7 +467,7 @@ def get_funds_return_analysis(fund_codes):
                         'growth_rate': float(r.daily_growth_rate) if r.daily_growth_rate else None
                     } for r in records]
                 }
-        
+
         return jsonify({
             "success": True,
             "data": result,
@@ -402,11 +476,115 @@ def get_funds_return_analysis(fund_codes):
                 "end_date": end_date
             }
         })
-        
+
     except Exception as e:
         return jsonify({
             "success": False,
             "message": f"获取收益率数据失败: {str(e)}"
+        }), 500
+
+
+@fund_lab_bp.route('/analysis/correlation', methods=['POST'])
+def calculate_correlation():
+    """
+    计算多只基金的相关性矩阵
+
+    Request Body:
+        {
+            "fund_codes": ["000001", "000002", "000003"],
+            "start_date": "2024-01-01",  // 可选，默认近1年
+            "end_date": "2024-12-31"     // 可选，默认今天
+        }
+
+    Returns:
+        相关性矩阵和基金名称列表
+    """
+    try:
+        data = request.get_json()
+        fund_codes = data.get('fund_codes', [])
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+
+        if not fund_codes or len(fund_codes) < 2:
+            return jsonify({
+                "success": False,
+                "message": "至少需要2只基金才能计算相关性"
+            }), 400
+
+        if not end_date:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        if not start_date:
+            start = datetime.strptime(end_date, '%Y-%m-%d') - timedelta(days=365)
+            start_date = start.strftime('%Y-%m-%d')
+
+        # 获取每只基金的日收益率数据
+        returns_data = {}
+        fund_names = {}
+
+        for code in fund_codes:
+            records = FundNavHistory.query.filter(
+                FundNavHistory.fund_code == code,
+                FundNavHistory.nav_date >= start_date,
+                FundNavHistory.nav_date <= end_date,
+                FundNavHistory.daily_growth_rate.isnot(None)
+            ).order_by(FundNavHistory.nav_date.asc()).all()
+
+            if records:
+                fund_names[code] = records[0].fund_name
+                returns_data[code] = {
+                    r.nav_date.strftime('%Y-%m-%d'): float(r.daily_growth_rate)
+                    for r in records
+                }
+
+        if len(returns_data) < 2:
+            return jsonify({
+                "success": False,
+                "message": "数据不足，无法计算相关性"
+            }), 400
+
+        # 构建收益率矩阵（对齐日期）
+        all_dates = set()
+        for code, data in returns_data.items():
+            all_dates.update(data.keys())
+        all_dates = sorted(all_dates)
+
+        # 构建DataFrame
+        df_data = {}
+        for code in fund_codes:
+            if code in returns_data:
+                df_data[code] = [returns_data[code].get(date, 0) for date in all_dates]
+
+        df = pd.DataFrame(df_data, index=all_dates)
+
+        # 计算相关系数矩阵
+        corr_matrix = df.corr()
+
+        # 构建结果
+        result = {
+            "funds": [
+                {
+                    "code": code,
+                    "name": fund_names.get(code, code)
+                }
+                for code in fund_codes if code in fund_names
+            ],
+            "matrix": corr_matrix.values.tolist(),
+            "period": {
+                "start_date": start_date,
+                "end_date": end_date,
+                "trading_days": len(all_dates)
+            }
+        }
+
+        return jsonify({
+            "success": True,
+            "data": result
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"计算相关性失败: {str(e)}"
         }), 500
 
 
