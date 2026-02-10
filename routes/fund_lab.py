@@ -12,6 +12,7 @@ from models.fund_watchlist import FundWatchlist
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
+from sqlalchemy import func
 
 fund_lab_bp = Blueprint('fund_lab', __name__)
 
@@ -588,6 +589,179 @@ def calculate_correlation():
         }), 500
 
 
+@fund_lab_bp.route('/analysis/risk-return', methods=['POST'])
+def calculate_risk_return():
+    """
+    计算基金的风险收益分布数据
+
+    Request Body:
+        {
+            "fund_codes": ["000001", "000002", "000003"],
+            "volatility_period": "1y"  // 1m/3m/6m/1y/2y/3y，默认为1y
+        }
+
+    Returns:
+        各基金的多时间维度收益率和波动率，以及市场平均水平
+    """
+    try:
+        data = request.get_json()
+        fund_codes = data.get('fund_codes', [])
+        volatility_period = data.get('volatility_period', '1y')
+
+        if not fund_codes:
+            return jsonify({
+                "success": False,
+                "message": "基金代码不能为空"
+            }), 400
+
+        # 计算日期范围
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        period_days = {
+            '1m': 30,
+            '3m': 90,
+            '6m': 180,
+            '1y': 365,
+            '2y': 730,
+            '3y': 1095
+        }
+        days = period_days.get(volatility_period, 365)
+        start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+
+        # 获取各基金的日收益率数据并计算波动率
+        funds_result = []
+
+        for code in fund_codes:
+            # 获取日收益率数据
+            records = FundNavHistory.query.filter(
+                FundNavHistory.fund_code == code,
+                FundNavHistory.nav_date >= start_date,
+                FundNavHistory.nav_date <= end_date,
+                FundNavHistory.daily_growth_rate.isnot(None)
+            ).order_by(FundNavHistory.nav_date.asc()).all()
+
+            if not records:
+                continue
+
+            # 获取基金基本信息
+            fund_info = FundOpenRankAll.query.filter_by(fund_code=code).first()
+
+            # 计算各期限波动率
+            volatilities = {}
+            returns = {}
+
+            # 各期限对应的交易日天数
+            trading_days = {'1m': 21, '3m': 63, '6m': 126, '1y': 252, '2y': 504, '3y': 756}
+
+            for period, days_count in trading_days.items():
+                recent_records = records[-days_count:] if len(records) >= days_count else records
+                if len(recent_records) >= 10:  # 至少10个交易日数据
+                    daily_returns = [float(r.daily_growth_rate) for r in recent_records]
+                    # 年化波动率 = 日收益率标准差 * sqrt(交易日天数)
+                    volatilities[period] = round(np.std(daily_returns) * np.sqrt(trading_days[period]), 2)
+
+            # 从 fund_open_rank_all 获取各期收益率
+            if fund_info:
+                returns = {
+                    '1m': fund_info.monthly_1_growth_rate,
+                    '3m': fund_info.monthly_3_growth_rate,
+                    '6m': fund_info.monthly_6_growth_rate,
+                    '1y': fund_info.yearly_1_growth_rate,
+                    '2y': fund_info.yearly_2_growth_rate,
+                    '3y': fund_info.yearly_3_growth_rate
+                }
+
+            funds_result.append({
+                'code': code,
+                'name': fund_info.fund_name if fund_info else code,
+                'returns': returns,
+                'volatilities': volatilities
+            })
+
+        if not funds_result:
+            return jsonify({
+                "success": False,
+                "message": "无有效数据"
+            }), 400
+
+        # 计算选中基金的平均值（选中基金平均）
+        selected_avg = {
+            'returns': {},
+            'volatilities': {}
+        }
+
+        for period in ['1m', '3m', '6m', '1y', '2y', '3y']:
+            # 计算平均收益率
+            valid_returns = [f['returns'].get(period) for f in funds_result if f['returns'].get(period) is not None]
+            if valid_returns:
+                selected_avg['returns'][period] = round(sum(valid_returns) / len(valid_returns), 2)
+
+            # 计算平均波动率
+            valid_vols = [f['volatilities'].get(period) for f in funds_result if f['volatilities'].get(period) is not None]
+            if valid_vols:
+                selected_avg['volatilities'][period] = round(sum(valid_vols) / len(valid_vols), 2)
+
+        # 计算全市场平均（简化版 - 只计算收益率）
+        market_avg = {}
+        for period in ['1m', '3m', '6m', '1y', '2y', '3y']:
+            column_map = {
+                '1m': FundOpenRankAll.monthly_1_growth_rate,
+                '3m': FundOpenRankAll.monthly_3_growth_rate,
+                '6m': FundOpenRankAll.monthly_6_growth_rate,
+                '1y': FundOpenRankAll.yearly_1_growth_rate,
+                '2y': FundOpenRankAll.yearly_2_growth_rate,
+                '3y': FundOpenRankAll.yearly_3_growth_rate
+            }
+
+            avg_value = db.session.query(func.avg(column_map[period])).scalar()
+            if avg_value is not None:
+                market_avg[period] = round(float(avg_value), 2)
+
+        # 无风险收益率（使用中国10年期国债收益率作为参考，约2.5%）
+        # 实际应用中可以从akshare获取实时数据
+        risk_free_rate = 2.5
+
+        # 计算每个基金的夏普比率
+        for fund in funds_result:
+            fund['sharpe_ratios'] = {}
+            for period in ['1m', '3m', '6m', '1y', '2y', '3y']:
+                ret = fund['returns'].get(period)
+                vol = fund['volatilities'].get(period)
+                if ret is not None and vol is not None and vol > 0:
+                    fund['sharpe_ratios'][period] = round((ret - risk_free_rate) / vol, 2)
+
+        # 找出最优基金（夏普比率最高）
+        best_fund = None
+        best_sharpe = -float('inf')
+        for fund in funds_result:
+            sharpe = fund['sharpe_ratios'].get(volatility_period)
+            if sharpe is not None and sharpe > best_sharpe:
+                best_sharpe = sharpe
+                best_fund = fund
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "funds": funds_result,
+                "selected_avg": selected_avg,
+                "market_avg": market_avg,
+                "risk_free_rate": risk_free_rate,
+                "best_fund": {
+                    "code": best_fund['code'],
+                    "name": best_fund['name'],
+                    "sharpe": best_sharpe,
+                    "return": best_fund['returns'].get(volatility_period),
+                    "volatility": best_fund['volatilities'].get(volatility_period)
+                } if best_fund else None
+            }
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"计算风险收益数据失败: {str(e)}"
+        }), 500
+
+
 @fund_lab_bp.route('/analysis/metrics/<fund_codes>', methods=['GET'])
 def get_funds_metrics(fund_codes):
     """
@@ -1105,4 +1279,413 @@ def export_funds():
         return jsonify({
             "success": False,
             "message": f"导出失败: {str(e)}"
+        }), 500
+
+
+# ==================== 基准指数相关接口 ====================
+
+@fund_lab_bp.route('/benchmark/list', methods=['GET'])
+def get_benchmark_list():
+    """
+    获取可用的基准指数列表
+    """
+    from models.index_history import BENCHMARK_INDICES
+    
+    return jsonify({
+        "success": True,
+        "data": [
+            {"code": code, "name": name}
+            for code, name in BENCHMARK_INDICES.items()
+        ]
+    })
+
+
+@fund_lab_bp.route('/benchmark/history/<index_codes>', methods=['GET'])
+def get_benchmark_history(index_codes):
+    """
+    获取基准指数历史数据（用于收益走势对比）
+    如果数据库中数据不足，会自动从akshare获取并保存
+    
+    Args:
+        index_codes: 逗号分隔的指数代码列表，如"000300,000905"
+    
+    Query Params:
+        start_date (str): 开始日期 YYYY-MM-DD
+        end_date (str): 结束日期 YYYY-MM-DD
+    """
+    from models.index_history import IndexHistory, BENCHMARK_INDICES
+    
+    try:
+        codes = index_codes.split(',')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        if not end_date:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        if not start_date:
+            start = datetime.strptime(end_date, '%Y-%m-%d') - timedelta(days=365)
+            start_date = start.strftime('%Y-%m-%d')
+        
+        result = {}
+        
+        for code in codes:
+            # 先查询数据库
+            records = IndexHistory.query.filter(
+                IndexHistory.index_code == code,
+                IndexHistory.trade_date >= start_date,
+                IndexHistory.trade_date <= end_date
+            ).order_by(IndexHistory.trade_date.asc()).all()
+            
+            # 检查数据是否完整
+            expected_days = (datetime.strptime(end_date, '%Y-%m-%d') - 
+                           datetime.strptime(start_date, '%Y-%m-%d')).days
+            actual_days = len(records)
+            data_complete = actual_days >= expected_days * 0.6  # 考虑节假日，60%即可
+            
+            if not data_complete:
+                # 从akshare获取数据
+                try:
+                    import akshare as ak
+                    
+                    # 根据指数代码选择不同的接口
+                    if code.startswith('000') or code.startswith('399'):
+                        # 使用指数日线数据接口
+                        df = ak.index_zh_a_hist(symbol=code, period="daily", 
+                                               start_date=start_date.replace('-', ''),
+                                               end_date=end_date.replace('-', ''))
+                    else:
+                        df = None
+                    
+                    if df is not None and not df.empty:
+                        # 保存到数据库
+                        for _, row in df.iterrows():
+                            trade_date = pd.to_datetime(row['日期']).date()
+                            
+                            existing = IndexHistory.query.filter_by(
+                                index_code=code,
+                                trade_date=trade_date
+                            ).first()
+                            
+                            if not existing:
+                                index_record = IndexHistory(
+                                    index_code=code,
+                                    index_name=BENCHMARK_INDICES.get(code, code),
+                                    trade_date=trade_date,
+                                    close=float(row['收盘']) if pd.notna(row['收盘']) else None,
+                                    open=float(row['开盘']) if pd.notna(row['开盘']) else None,
+                                    high=float(row['最高']) if pd.notna(row['最高']) else None,
+                                    low=float(row['最低']) if pd.notna(row['最低']) else None,
+                                    volume=int(row['成交量']) if pd.notna(row['成交量']) else None,
+                                    amount=float(row['成交额']) if pd.notna(row['成交额']) else None,
+                                    change_pct=float(row['涨跌幅']) if pd.notna(row['涨跌幅']) else None
+                                )
+                                db.session.add(index_record)
+                        
+                        db.session.commit()
+                        
+                        # 重新查询
+                        records = IndexHistory.query.filter(
+                            IndexHistory.index_code == code,
+                            IndexHistory.trade_date >= start_date,
+                            IndexHistory.trade_date <= end_date
+                        ).order_by(IndexHistory.trade_date.asc()).all()
+                
+                except Exception as ak_error:
+                    print(f"从akshare获取指数{code}数据失败: {ak_error}")
+            
+            if records:
+                result[code] = {
+                    'index_name': BENCHMARK_INDICES.get(code, code),
+                    'data': [{
+                        'date': r.trade_date.strftime('%Y-%m-%d'),
+                        'close': float(r.close) if r.close else None,
+                        'change_pct': float(r.change_pct) if r.change_pct else None
+                    } for r in records]
+                }
+        
+        return jsonify({
+            "success": True,
+            "data": result,
+            "period": {
+                "start_date": start_date,
+                "end_date": end_date
+            }
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"获取基准指数数据失败: {str(e)}"
+        }), 500
+
+
+# ==================== 专业指标计算接口 ====================
+
+@fund_lab_bp.route('/analysis/professional-metrics', methods=['POST'])
+def calculate_professional_metrics():
+    """
+    计算基金的专业量化指标（参考晨星评级方法论）
+    
+    Request Body:
+        {
+            "fund_codes": ["000001", "000002"],
+            "benchmark": "000300",  // 基准指数代码，默认沪深300
+            "period": "1y"  // 计算周期: 1y/2y/3y
+        }
+    
+    Returns:
+        各基金的专业指标：
+        - 年化收益率
+        - 年化波动率
+        - 最大回撤
+        - 夏普比率
+        - 索提诺比率
+        - 卡玛比率
+        - 信息比率
+        - 阿尔法
+        - 贝塔
+        - 特雷诺比率
+        - 胜率
+        - 盈亏比
+    """
+    from models.index_history import IndexHistory, BENCHMARK_INDICES
+    
+    try:
+        data = request.get_json()
+        fund_codes = data.get('fund_codes', [])
+        benchmark_code = data.get('benchmark', '000300')
+        period = data.get('period', '1y')
+        
+        if not fund_codes:
+            return jsonify({
+                "success": False,
+                "message": "基金代码不能为空"
+            }), 400
+        
+        # 计算日期范围
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        period_days = {'1y': 365, '2y': 730, '3y': 1095}
+        days = period_days.get(period, 365)
+        start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+        
+        # 无风险收益率（年化，使用10年期国债收益率约2.5%）
+        risk_free_rate = 2.5
+        daily_rf = risk_free_rate / 252  # 日化无风险收益率
+        
+        # 获取基准指数数据
+        benchmark_records = IndexHistory.query.filter(
+            IndexHistory.index_code == benchmark_code,
+            IndexHistory.trade_date >= start_date,
+            IndexHistory.trade_date <= end_date
+        ).order_by(IndexHistory.trade_date.asc()).all()
+        
+        benchmark_returns = {}
+        if benchmark_records:
+            for i, r in enumerate(benchmark_records):
+                if i > 0 and benchmark_records[i-1].close and r.close:
+                    daily_return = (r.close - benchmark_records[i-1].close) / benchmark_records[i-1].close * 100
+                    benchmark_returns[r.trade_date.strftime('%Y-%m-%d')] = daily_return
+        
+        # 计算基准指数的年化收益和波动率
+        if benchmark_returns:
+            bm_returns_list = list(benchmark_returns.values())
+            benchmark_annual_return = np.mean(bm_returns_list) * 252
+            benchmark_volatility = np.std(bm_returns_list) * np.sqrt(252)
+        else:
+            benchmark_annual_return = 10  # 默认值
+            benchmark_volatility = 20
+        
+        results = []
+        
+        for code in fund_codes:
+            # 获取基金历史数据
+            records = FundNavHistory.query.filter(
+                FundNavHistory.fund_code == code,
+                FundNavHistory.nav_date >= start_date,
+                FundNavHistory.nav_date <= end_date,
+                FundNavHistory.net_value.isnot(None)
+            ).order_by(FundNavHistory.nav_date.asc()).all()
+            
+            if len(records) < 20:  # 数据不足
+                continue
+            
+            # 获取基金基本信息
+            fund_info = FundOpenRankAll.query.filter_by(fund_code=code).first()
+            
+            # 计算日收益率序列
+            daily_returns = []
+            nav_values = []
+            dates = []
+            
+            for i, r in enumerate(records):
+                # 转换 Decimal 为 float
+                nav = float(r.net_value) if r.net_value else None
+                nav_values.append(nav)
+                dates.append(r.nav_date.strftime('%Y-%m-%d'))
+                if i > 0 and nav_values[i-1] and nav:
+                    daily_return = (nav - nav_values[i-1]) / nav_values[i-1] * 100
+                    daily_returns.append(float(daily_return))
+            
+            if len(daily_returns) < 10:
+                continue
+            
+            # ========== 基础指标 ==========
+            
+            # 年化收益率
+            total_return = (nav_values[-1] - nav_values[0]) / nav_values[0] * 100
+            trading_days = len(daily_returns)
+            annual_return = float(total_return) * 252 / trading_days
+            
+            # 年化波动率
+            volatility = float(np.std(daily_returns)) * np.sqrt(252)
+            
+            # 最大回撤
+            peak = nav_values[0]
+            max_drawdown = 0
+            drawdown_start = None
+            drawdown_end = None
+            current_drawdown_start = dates[0]
+            
+            for i, nav in enumerate(nav_values):
+                if nav and nav > peak:
+                    peak = nav
+                    current_drawdown_start = dates[i]
+                if nav and peak:
+                    drawdown = (peak - nav) / peak * 100
+                    if drawdown > max_drawdown:
+                        max_drawdown = float(drawdown)
+                        drawdown_start = current_drawdown_start
+                        drawdown_end = dates[i]
+            
+            # ========== 风险调整收益指标 ==========
+            
+            # 夏普比率 = (年化收益 - 无风险收益) / 年化波动率
+            sharpe_ratio = (annual_return - risk_free_rate) / volatility if volatility > 0 else 0
+            
+            # 索提诺比率 = (年化收益 - 无风险收益) / 下行波动率
+            downside_returns = [r for r in daily_returns if r < daily_rf]
+            downside_volatility = float(np.std(downside_returns)) * np.sqrt(252) if downside_returns else volatility
+            sortino_ratio = (annual_return - risk_free_rate) / downside_volatility if downside_volatility > 0 else 0
+            
+            # 卡玛比率 = 年化收益 / 最大回撤
+            calmar_ratio = annual_return / max_drawdown if max_drawdown > 0 else 0
+            
+            # ========== 相对基准指标 ==========
+            
+            # 对齐基金和基准的日期
+            aligned_fund_returns = []
+            aligned_benchmark_returns = []
+            
+            for i, date in enumerate(dates[1:], 1):  # 从第二天开始（因为收益率从第二天算起）
+                if date in benchmark_returns:
+                    aligned_fund_returns.append(daily_returns[i-1])
+                    aligned_benchmark_returns.append(benchmark_returns[date])
+            
+            if len(aligned_fund_returns) >= 20:
+                # 转换为 numpy array 确保类型正确
+                fund_arr = np.array([float(x) for x in aligned_fund_returns])
+                bm_arr = np.array([float(x) for x in aligned_benchmark_returns])
+                
+                # 贝塔 = Cov(基金收益, 基准收益) / Var(基准收益)
+                covariance = np.cov(fund_arr, bm_arr)[0][1]
+                benchmark_variance = np.var(bm_arr)
+                beta = float(covariance / benchmark_variance) if benchmark_variance > 0 else 1
+                
+                # 阿尔法 = 基金年化收益 - [无风险收益 + 贝塔 × (基准年化收益 - 无风险收益)]
+                alpha = annual_return - (risk_free_rate + beta * (benchmark_annual_return - risk_free_rate))
+                
+                # 信息比率 = (基金年化收益 - 基准年化收益) / 跟踪误差
+                excess_returns = fund_arr - bm_arr
+                tracking_error = float(np.std(excess_returns)) * np.sqrt(252)
+                information_ratio = (annual_return - benchmark_annual_return) / tracking_error if tracking_error > 0 else 0
+                
+                # 特雷诺比率 = (年化收益 - 无风险收益) / 贝塔
+                treynor_ratio = (annual_return - risk_free_rate) / beta if beta != 0 else 0
+            else:
+                beta = 1
+                alpha = annual_return - benchmark_annual_return
+                information_ratio = 0
+                treynor_ratio = 0
+            
+            # ========== 交易统计指标 ==========
+            
+            # 胜率 = 正收益天数 / 总交易天数
+            positive_days = len([r for r in daily_returns if r > 0])
+            win_rate = positive_days / len(daily_returns) * 100
+            
+            # 盈亏比 = 平均盈利 / 平均亏损
+            gains = [float(r) for r in daily_returns if r > 0]
+            losses = [abs(float(r)) for r in daily_returns if r < 0]
+            avg_gain = float(np.mean(gains)) if gains else 0
+            avg_loss = float(np.mean(losses)) if losses else 1
+            profit_loss_ratio = avg_gain / avg_loss if avg_loss > 0 else 0
+            
+            # ========== 晨星风格评级 ==========
+            # 简化版：基于夏普比率和最大回撤
+            if sharpe_ratio >= 1.5 and max_drawdown <= 15:
+                morningstar_rating = 5
+            elif sharpe_ratio >= 1.0 and max_drawdown <= 25:
+                morningstar_rating = 4
+            elif sharpe_ratio >= 0.5 and max_drawdown <= 35:
+                morningstar_rating = 3
+            elif sharpe_ratio >= 0 and max_drawdown <= 50:
+                morningstar_rating = 2
+            else:
+                morningstar_rating = 1
+            
+            results.append({
+                'fund_code': code,
+                'fund_name': fund_info.fund_name if fund_info else code,
+                'period': period,
+                'trading_days': trading_days,
+                
+                # 基础指标
+                'annual_return': round(annual_return, 2),
+                'volatility': round(volatility, 2),
+                'max_drawdown': round(max_drawdown, 2),
+                'max_drawdown_period': f"{drawdown_start} ~ {drawdown_end}" if drawdown_start else None,
+                
+                # 风险调整收益
+                'sharpe_ratio': round(sharpe_ratio, 2),
+                'sortino_ratio': round(sortino_ratio, 2),
+                'calmar_ratio': round(calmar_ratio, 2),
+                
+                # 相对基准
+                'alpha': round(alpha, 2),
+                'beta': round(beta, 2),
+                'information_ratio': round(information_ratio, 2),
+                'treynor_ratio': round(treynor_ratio, 2),
+                
+                # 交易统计
+                'win_rate': round(win_rate, 2),
+                'profit_loss_ratio': round(profit_loss_ratio, 2),
+                
+                # 综合评级
+                'morningstar_rating': morningstar_rating
+            })
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "funds": results,
+                "benchmark": {
+                    "code": benchmark_code,
+                    "name": BENCHMARK_INDICES.get(benchmark_code, benchmark_code),
+                    "annual_return": round(benchmark_annual_return, 2),
+                    "volatility": round(benchmark_volatility, 2)
+                },
+                "risk_free_rate": risk_free_rate,
+                "period": {
+                    "start_date": start_date,
+                    "end_date": end_date
+                }
+            }
+        })
+    
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "message": f"计算专业指标失败: {str(e)}"
         }), 500
