@@ -1762,3 +1762,492 @@ def calculate_professional_metrics():
             "success": False,
             "message": f"计算专业指标失败: {str(e)}"
         }), 500
+# ==================== 组合管理相关接口 ====================
+
+@fund_lab_bp.route('/portfolios', methods=['GET'])
+def get_portfolio_list():
+    """
+    获取用户的组合列表
+    
+    Query Params:
+        user_id (str): 用户ID，默认'default'
+        include_items (bool): 是否包含组合明细，默认true
+    
+    Returns:
+        组合列表
+    """
+    try:
+        from models.fund_portfolio import FundPortfolio, FundPortfolioItem
+        
+        user_id = request.args.get('user_id', 'default')
+        include_items = request.args.get('include_items', 'true').lower() == 'true'
+        
+        portfolios = FundPortfolio.query.filter_by(
+            user_id=user_id,
+            is_active=True
+        ).order_by(FundPortfolio.created_at.desc()).all()
+        
+        result = []
+        for p in portfolios:
+            portfolio_data = {
+                'id': p.id,
+                'name': p.name,
+                'goal': p.goal,
+                'strategy': p.strategy,
+                'amount': float(p.amount) if p.amount else 100000,
+                'expected_return': float(p.expected_return) if p.expected_return else None,
+                'volatility': float(p.volatility) if p.volatility else None,
+                'sharpe_ratio': float(p.sharpe_ratio) if p.sharpe_ratio else None,
+                'risk_level': p.risk_level,
+                'weighted_fee_rate': float(p.weighted_fee_rate) if p.weighted_fee_rate else None,
+                'is_default': p.is_default,
+                'created_at': p.created_at.isoformat() if p.created_at else None,
+                'updated_at': p.updated_at.isoformat() if p.updated_at else None,
+                'fund_count': p.items.count()
+            }
+            
+            if include_items:
+                items = []
+                for item in p.items.all():
+                    items.append({
+                        'id': item.id,
+                        'fund_code': item.fund_code,
+                        'fund_name': item.fund_name,
+                        'weight': float(item.weight) if item.weight else 0,
+                        'amount': float(item.amount) if item.amount else 0,
+                        'yearly_return': float(item.yearly_return) if item.yearly_return else None,
+                        'fee_rate': float(item.fee_rate) if item.fee_rate else None
+                    })
+                portfolio_data['items'] = items
+            
+            result.append(portfolio_data)
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'获取组合列表失败: {str(e)}'
+        }), 500
+
+
+@fund_lab_bp.route('/portfolios/<int:portfolio_id>', methods=['GET'])
+def get_portfolio_detail(portfolio_id):
+    """
+    获取组合详情
+    
+    Args:
+        portfolio_id: 组合ID
+    
+    Returns:
+        组合详情
+    """
+    try:
+        from models.fund_portfolio import FundPortfolio
+        
+        portfolio = FundPortfolio.query.get(portfolio_id)
+        if not portfolio:
+            return jsonify({
+                'success': False,
+                'message': '组合不存在'
+            }), 404
+        
+        # 获取当前基金最新数据
+        fund_codes = [item.fund_code for item in portfolio.items.all()]
+        fund_data_map = {}
+        
+        if fund_codes:
+            fund_data = FundOpenRankAll.query.filter(
+                FundOpenRankAll.fund_code.in_(fund_codes)
+            ).all()
+            fund_data_map = {f.fund_code: f for f in fund_data}
+        
+        items = []
+        for item in portfolio.items.all():
+            fund_info = fund_data_map.get(item.fund_code)
+            items.append({
+                'id': item.id,
+                'fund_code': item.fund_code,
+                'fund_name': fund_info.fund_name if fund_info else item.fund_name,
+                'weight': float(item.weight) if item.weight else 0,
+                'amount': float(item.amount) if item.amount else 0,
+                # 当前最新数据
+                'current_net_value': fund_info.net_value if fund_info else None,
+                'current_yearly_return': fund_info.yearly_1_growth_rate if fund_info else None,
+                'current_daily_return': fund_info.daily_growth_rate if fund_info else None,
+                # 保存时的快照
+                'saved_yearly_return': float(item.yearly_return) if item.yearly_return else None,
+                'saved_monthly_return': float(item.monthly_return) if item.monthly_return else None,
+                'saved_weekly_return': float(item.weekly_return) if item.weekly_return else None,
+                'fee_rate': float(item.fee_rate) if item.fee_rate else None
+            })
+        
+        result = {
+            'id': portfolio.id,
+            'name': portfolio.name,
+            'goal': portfolio.goal,
+            'strategy': portfolio.strategy,
+            'amount': float(portfolio.amount) if portfolio.amount else 100000,
+            'expected_return': float(portfolio.expected_return) if portfolio.expected_return else None,
+            'volatility': float(portfolio.volatility) if portfolio.volatility else None,
+            'sharpe_ratio': float(portfolio.sharpe_ratio) if portfolio.sharpe_ratio else None,
+            'risk_level': portfolio.risk_level,
+            'weighted_fee_rate': float(portfolio.weighted_fee_rate) if portfolio.weighted_fee_rate else None,
+            'is_default': portfolio.is_default,
+            'created_at': portfolio.created_at.isoformat() if portfolio.created_at else None,
+            'updated_at': portfolio.updated_at.isoformat() if portfolio.updated_at else None,
+            'items': items
+        }
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'获取组合详情失败: {str(e)}'
+        }), 500
+
+
+@fund_lab_bp.route('/portfolios', methods=['POST'])
+def create_portfolio():
+    """
+    创建新组合
+    
+    Request Body:
+        {
+            "name": "我的组合",
+            "goal": "balanced",
+            "strategy": "equal",
+            "amount": 100000,
+            "funds": [
+                {"fund_code": "000001", "weight": 50, "amount": 50000},
+                {"fund_code": "000002", "weight": 50, "amount": 50000}
+            ],
+            "metrics": {
+                "expected_return": 15.5,
+                "volatility": 18.2,
+                "sharpe_ratio": 0.85,
+                "risk_level": "medium",
+                "weighted_fee_rate": 0.12
+            }
+        }
+    
+    Returns:
+        创建成功的组合ID
+    """
+    try:
+        from models.fund_portfolio import FundPortfolio, FundPortfolioItem
+        
+        data = request.get_json()
+        user_id = data.get('user_id', 'default')
+        
+        # 创建组合
+        portfolio = FundPortfolio(
+            user_id=user_id,
+            name=data.get('name', '未命名组合'),
+            goal=data.get('goal', 'balanced'),
+            strategy=data.get('strategy', 'equal'),
+            amount=data.get('amount', 100000)
+        )
+        
+        # 保存指标
+        metrics = data.get('metrics', {})
+        if metrics:
+            portfolio.expected_return = metrics.get('expected_return')
+            portfolio.volatility = metrics.get('volatility')
+            portfolio.sharpe_ratio = metrics.get('sharpe_ratio')
+            portfolio.risk_level = metrics.get('risk_level')
+            portfolio.weighted_fee_rate = metrics.get('weighted_fee_rate')
+        
+        db.session.add(portfolio)
+        db.session.flush()  # 获取 portfolio.id
+        
+        # 添加组合明细
+        funds = data.get('funds', [])
+        fund_codes = [f['fund_code'] for f in funds]
+        
+        # 获取基金信息
+        fund_info_map = {}
+        if fund_codes:
+            fund_data = FundOpenRankAll.query.filter(
+                FundOpenRankAll.fund_code.in_(fund_codes)
+            ).all()
+            fund_info_map = {f.fund_code: f for f in fund_data}
+        
+        for fund_data in funds:
+            code = fund_data['fund_code']
+            fund_info = fund_info_map.get(code)
+            
+            item = FundPortfolioItem(
+                portfolio_id=portfolio.id,
+                fund_code=code,
+                fund_name=fund_info.fund_name if fund_info else code,
+                weight=fund_data.get('weight', 0),
+                amount=fund_data.get('amount', 0),
+                yearly_return=fund_info.yearly_1_growth_rate if fund_info else None,
+                monthly_return=fund_info.monthly_1_growth_rate if fund_info else None,
+                weekly_return=fund_info.weekly_growth_rate if fund_info else None,
+                fee_rate=fund_info.fee_rate if fund_info else None
+            )
+            db.session.add(item)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': '组合创建成功',
+            'data': {
+                'id': portfolio.id,
+                'name': portfolio.name
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'创建组合失败: {str(e)}'
+        }), 500
+
+
+@fund_lab_bp.route('/portfolios/<int:portfolio_id>', methods=['PUT'])
+def update_portfolio(portfolio_id):
+    """
+    更新组合
+    
+    Args:
+        portfolio_id: 组合ID
+    
+    Request Body:
+        同 create_portfolio
+    
+    Returns:
+        更新结果
+    """
+    try:
+        from models.fund_portfolio import FundPortfolio, FundPortfolioItem
+        
+        portfolio = FundPortfolio.query.get(portfolio_id)
+        if not portfolio:
+            return jsonify({
+                'success': False,
+                'message': '组合不存在'
+            }), 404
+        
+        data = request.get_json()
+        
+        # 更新基本信息
+        if 'name' in data:
+            portfolio.name = data['name']
+        if 'goal' in data:
+            portfolio.goal = data['goal']
+        if 'strategy' in data:
+            portfolio.strategy = data['strategy']
+        if 'amount' in data:
+            portfolio.amount = data['amount']
+        
+        # 更新指标
+        metrics = data.get('metrics')
+        if metrics:
+            portfolio.expected_return = metrics.get('expected_return', portfolio.expected_return)
+            portfolio.volatility = metrics.get('volatility', portfolio.volatility)
+            portfolio.sharpe_ratio = metrics.get('sharpe_ratio', portfolio.sharpe_ratio)
+            portfolio.risk_level = metrics.get('risk_level', portfolio.risk_level)
+            portfolio.weighted_fee_rate = metrics.get('weighted_fee_rate', portfolio.weighted_fee_rate)
+        
+        # 更新组合明细
+        funds = data.get('funds')
+        if funds is not None:
+            # 删除原有明细
+            FundPortfolioItem.query.filter_by(portfolio_id=portfolio_id).delete()
+            
+            # 添加新明细
+            fund_codes = [f['fund_code'] for f in funds]
+            fund_info_map = {}
+            
+            if fund_codes:
+                fund_data = FundOpenRankAll.query.filter(
+                    FundOpenRankAll.fund_code.in_(fund_codes)
+                ).all()
+                fund_info_map = {f.fund_code: f for f in fund_data}
+            
+            for fund_data in funds:
+                code = fund_data['fund_code']
+                fund_info = fund_info_map.get(code)
+                
+                item = FundPortfolioItem(
+                    portfolio_id=portfolio.id,
+                    fund_code=code,
+                    fund_name=fund_info.fund_name if fund_info else code,
+                    weight=fund_data.get('weight', 0),
+                    amount=fund_data.get('amount', 0),
+                    yearly_return=fund_info.yearly_1_growth_rate if fund_info else None,
+                    monthly_return=fund_info.monthly_1_growth_rate if fund_info else None,
+                    weekly_return=fund_info.weekly_growth_rate if fund_info else None,
+                    fee_rate=fund_info.fee_rate if fund_info else None
+                )
+                db.session.add(item)
+        
+        portfolio.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': '组合更新成功',
+            'data': {
+                'id': portfolio.id,
+                'name': portfolio.name
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'更新组合失败: {str(e)}'
+        }), 500
+
+
+@fund_lab_bp.route('/portfolios/<int:portfolio_id>', methods=['DELETE'])
+def delete_portfolio(portfolio_id):
+    """
+    删除组合（软删除）
+    
+    Args:
+        portfolio_id: 组合ID
+    
+    Returns:
+        删除结果
+    """
+    try:
+        from models.fund_portfolio import FundPortfolio
+        
+        portfolio = FundPortfolio.query.get(portfolio_id)
+        if not portfolio:
+            return jsonify({
+                'success': False,
+                'message': '组合不存在'
+            }), 404
+        
+        portfolio.is_active = False
+        portfolio.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': '组合删除成功'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'删除组合失败: {str(e)}'
+        }), 500
+
+
+@fund_lab_bp.route('/portfolios/<int:portfolio_id>/set-default', methods=['POST'])
+def set_default_portfolio(portfolio_id):
+    """
+    设置默认组合
+    
+    Args:
+        portfolio_id: 组合ID
+    
+    Returns:
+        设置结果
+    """
+    try:
+        from models.fund_portfolio import FundPortfolio
+        
+        portfolio = FundPortfolio.query.get(portfolio_id)
+        if not portfolio:
+            return jsonify({
+                'success': False,
+                'message': '组合不存在'
+            }), 404
+        
+        # 取消其他默认组合
+        FundPortfolio.query.filter_by(
+            user_id=portfolio.user_id,
+            is_default=True
+        ).update({'is_default': False})
+        
+        # 设置当前为默认
+        portfolio.is_default = True
+        portfolio.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': '默认组合设置成功'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'设置默认组合失败: {str(e)}'
+        }), 500
+
+
+@fund_lab_bp.route('/portfolios/compare', methods=['POST'])
+def compare_portfolios():
+    """
+    对比多个组合的表现
+    
+    Request Body:
+        {
+            "portfolio_ids": [1, 2, 3]
+        }
+    
+    Returns:
+        组合对比数据
+    """
+    try:
+        from models.fund_portfolio import FundPortfolio
+        
+        data = request.get_json()
+        portfolio_ids = data.get('portfolio_ids', [])
+        
+        if not portfolio_ids:
+            return jsonify({
+                'success': False,
+                'message': '请选择要对比的组合'
+            }), 400
+        
+        portfolios = FundPortfolio.query.filter(
+            FundPortfolio.id.in_(portfolio_ids),
+            FundPortfolio.is_active == True
+        ).all()
+        
+        comparison = []
+        for p in portfolios:
+            comparison.append({
+                'id': p.id,
+                'name': p.name,
+                'expected_return': float(p.expected_return) if p.expected_return else None,
+                'volatility': float(p.volatility) if p.volatility else None,
+                'sharpe_ratio': float(p.sharpe_ratio) if p.sharpe_ratio else None,
+                'risk_level': p.risk_level,
+                'weighted_fee_rate': float(p.weighted_fee_rate) if p.weighted_fee_rate else None,
+                'fund_count': p.items.count(),
+                'created_at': p.created_at.isoformat() if p.created_at else None
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': comparison
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'对比组合失败: {str(e)}'
+        }), 500
