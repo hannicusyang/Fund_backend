@@ -15,6 +15,9 @@ import pandas as pd
 import numpy as np
 from sqlalchemy import func
 
+# 导入回测引擎
+from routes.fund_backtest import BacktestEngine
+
 fund_lab_bp = Blueprint('fund_lab', __name__)
 
 
@@ -965,19 +968,17 @@ def calculate_custom_metrics():
 @fund_lab_bp.route('/backtest', methods=['POST'])
 def run_backtest():
     """
-    运行投资组合回测
+    运行投资组合回测（使用完整回测引擎）
 
     Request Body:
         {
-            "funds": [
-                {"fund_code": "000001", "weight": 0.5},
-                {"fund_code": "000002", "weight": 0.5}
-            ],
+            "strategy": {...},  // 策略配置
+            "funds": ["000001", "000002"],  // 基金代码数组
             "start_date": "2023-01-01",
             "end_date": "2024-01-01",
             "initial_capital": 100000,
-            "rebalance_freq": "monthly",  // daily, weekly, monthly, quarterly
-            "transaction_cost": 0.001
+            "buy_fee": 0.0015,
+            "sell_fee": 0.0005
         }
 
     Returns:
@@ -985,108 +986,68 @@ def run_backtest():
     """
     try:
         data = request.get_json()
+        
+        strategy = data.get('strategy', {})
         funds = data.get('funds', [])
         start_date = data.get('start_date')
         end_date = data.get('end_date', datetime.now().strftime('%Y-%m-%d'))
         initial_capital = data.get('initial_capital', 100000)
-        rebalance_freq = data.get('rebalance_freq', 'monthly')
-        transaction_cost = data.get('transaction_cost', 0.001)
+        buy_fee = data.get('buy_fee', 0.0015)
+        sell_fee = data.get('sell_fee', 0.0005)
 
-        if not funds or not start_date:
+        # 确保funds是列表
+        if isinstance(funds, str):
+            funds = [funds]
+        elif not isinstance(funds, list):
             return jsonify({
-                "success": False,
-                "message": "缺少必要参数"
+                'success': False,
+                'message': 'funds参数必须是字符串或列表'
             }), 400
+        
+        # 过滤空值
+        fund_codes = [code for code in funds if code and isinstance(code, str)]
 
-        # 获取基金历史数据
-        fund_codes = [f['fund_code'] for f in funds]
-        weights = {f['fund_code']: f['weight'] for f in funds}
-
-        # 查询各基金净值历史
-        nav_data = {}
-        for code in fund_codes:
-            records = FundNavHistory.query.filter(
-                FundNavHistory.fund_code == code,
-                FundNavHistory.nav_date >= start_date,
-                FundNavHistory.nav_date <= end_date
-            ).order_by(FundNavHistory.nav_date.asc()).all()
-
-            nav_data[code] = {
-                r.nav_date.strftime('%Y-%m-%d'): float(r.net_value) if r.net_value else None
-                for r in records
-            }
-
-        # 模拟回测（简化版本）
-        # 实际回测需要更复杂的逻辑
-        dates = sorted(set().union(*[set(d.keys()) for d in nav_data.values()]))
-
-        if len(dates) < 2:
+        if not fund_codes or not start_date or not end_date:
             return jsonify({
-                "success": False,
-                "message": "历史数据不足，无法进行回测"
+                'success': False,
+                'message': '缺少必要参数'
             }), 400
-
-        # 计算组合净值曲线
-        portfolio_values = []
-        current_value = initial_capital
-
-        for date in dates:
-            day_return = 0
-            valid_funds = 0
-
-            for code in fund_codes:
-                if date in nav_data[code] and nav_data[code][date]:
-                    # 简化：假设各基金等比例贡献收益
-                    day_return += weights.get(code, 0)
-                    valid_funds += 1
-
-            # 模拟净值变化（简化计算）
-            change = (np.random.randn() * 0.02 + 0.0003)  # 模拟日收益
-            current_value = current_value * (1 + change)
-
-            portfolio_values.append({
-                'date': date,
-                'value': round(current_value, 2),
-                'return': round(change * 100, 4)
-            })
-
-        # 计算绩效指标
-        total_return = (current_value - initial_capital) / initial_capital * 100
-        days_count = len(dates)
-        annualized_return = ((current_value / initial_capital) ** (365 / days_count) - 1) * 100 if days_count > 0 else 0
-
-        # 计算最大回撤
-        max_drawdown = 0
-        peak = initial_capital
-        for pv in portfolio_values:
-            if pv['value'] > peak:
-                peak = pv['value']
-            drawdown = (peak - pv['value']) / peak * 100
-            if drawdown > max_drawdown:
-                max_drawdown = drawdown
-
+        
+        # 创建回测引擎
+        config = {
+            'strategy': strategy,
+            'initial_capital': initial_capital,
+            'buy_fee': buy_fee,
+            'sell_fee': sell_fee
+        }
+        
+        engine = BacktestEngine(config)
+        
+        # 运行回测
+        start = datetime.strptime(start_date, '%Y-%m-%d').date()
+        end = datetime.strptime(end_date, '%Y-%m-%d').date()
+        
+        result = engine.run(fund_codes, start, end)
+        
+        if result is None:
+            return jsonify({
+                'success': False,
+                'message': '回测失败，可能是数据不足或akshare获取失败'
+            }), 400
+        
+        # 转换返回格式以兼容前端
         return jsonify({
-            "success": True,
-            "data": {
-                "summary": {
-                    "initial_capital": initial_capital,
-                    "final_value": round(current_value, 2),
-                    "total_return": round(total_return, 2),
-                    "annualized_return": round(annualized_return, 2),
-                    "max_drawdown": round(max_drawdown, 2),
-                    "sharpe_ratio": round((annualized_return - 3) / 15, 2),  # 简化计算
-                    "volatility": 15.0,  # 简化
-                    "trading_days": days_count
-                },
-                "equity_curve": portfolio_values,
-                "trades": []  # 实际交易记录
-            }
+            'success': True,
+            'data': result,
+            'note': '数据来源于数据库或akshare实时获取'
         })
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
-            "success": False,
-            "message": f"回测失败: {str(e)}"
+            'success': False,
+            'message': f'回测失败: {str(e)}'
         }), 500
 
 

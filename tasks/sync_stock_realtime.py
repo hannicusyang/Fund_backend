@@ -4,32 +4,37 @@
 """
 import akshare as ak
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, time
 from config.logging_config import logger
 from models import db
 from models.stock_estimation import StockEstimation
+from models.trading_day import TradingDay
 
 
 def is_trading_time():
-    """判断当前是否为A股交易时间"""
+    """判断当前是否为A股交易时间（查数据库 + 时间段检查）"""
     now = datetime.now()
+    today = now.date()
     current_time = now.time()
     
-    # 交易时间: 9:30-11:30, 13:00-15:00
-    morning_start = current_time.replace(hour=9, minute=30, second=0)
-    morning_end = current_time.replace(hour=11, minute=30, second=0)
-    afternoon_start = current_time.replace(hour=13, minute=0, second=0)
-    afternoon_end = current_time.replace(hour=15, minute=0, second=0)
-    
+    # 检查交易时段: 9:30-11:30, 13:00-15:00
     is_trading_hours = (
-        (morning_start <= current_time <= morning_end) or
-        (afternoon_start <= current_time <= afternoon_end)
+        (time(9, 30) <= current_time <= time(11, 30)) or
+        (time(13, 0) <= current_time <= time(15, 0))
     )
     
-    # 简单判断是否为周末（实际应该查交易日历）
-    is_weekday = now.weekday() < 5
+    if not is_trading_hours:
+        return False
     
-    return is_trading_hours and is_weekday
+    # 查数据库判断是否为交易日
+    try:
+        is_trading_day = db.session.query(
+            db.exists().where(TradingDay.trade_date == today)
+        ).scalar()
+        return bool(is_trading_day)
+    except Exception as e:
+        logger.error(f"❌ 查询交易日失败: {e}")
+        return False  # 安全起见返回 False
 
 
 def fetch_stock_realtime():
@@ -184,6 +189,11 @@ def sync_stock_realtime():
     """主同步函数：获取股票实时行情并写入数据库"""
     from app import app
     import traceback
+    
+    # 检查是否为交易时间
+    if not is_trading_time():
+        logger.debug("⏸️ 非交易时间，跳过股票实时行情同步")
+        return
     
     with app.app_context():
         try:
