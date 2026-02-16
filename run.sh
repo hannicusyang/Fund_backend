@@ -9,4 +9,4 @@ ENV=${1:-development}
 export FLASK_ENV=$ENV
 
 echo "启动环境: $ENV"
-python app.py
+python3 app.py
