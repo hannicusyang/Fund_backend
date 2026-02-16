@@ -1,4 +1,5 @@
 # config/app_config.py
+from .env_config import config, ENV
 from .mysql_config import DB_URL
 
 
@@ -13,7 +14,10 @@ class AppConfig:
     SECRET_KEY = 'your-secret-key-here'  # 生产环境请用环境变量
 
     # 调试模式
-    DEBUG = False
+    DEBUG = config['DEBUG']
+
+    # 前端地址（用于CORS等）
+    FRONTEND_URL = config['FRONTEND_URL']
 
     # 其他 Flask 配置...
     JSON_AS_ASCII = False  # 中文 JSON 不转义

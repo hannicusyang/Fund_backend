@@ -6,6 +6,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 import atexit
 from models import db
 from config import AppConfig
+from config.env_config import config
 from flask_cors import CORS
 
 from routes.my_fund_holding import holding_bp
@@ -18,10 +19,11 @@ from tasks.fund_open_daily import fund_open_synchronization
 from tasks.fund_history_to_mysql import fetch_and_save_fund_history
 from tasks.fund_history_to_mysql import sync_all_watched_funds
 from tasks.sync_stock_market_overview import sync_all_stock_overview
-from tasks.sync_stock_realtime import sync_stock_realtime  # ← 新增股票实时行情同步
+from tasks.sync_stock_realtime import sync_stock_realtime
+from tasks.sync_stock_screening import sync_stock_screening_data  # ← 新增股票实时行情同步
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 app.config.from_object(AppConfig)
 
 # ====== 初始化数据库 ======
@@ -41,6 +43,7 @@ scheduler.add_job(fetch_and_save_fund_estimation, trigger=IntervalTrigger(minute
 scheduler.add_job(sync_all_watched_funds, 'cron', id='fund_watched_sync', hour=0, minute=40)
 scheduler.add_job(sync_all_stock_overview, 'cron', hour=16, minute=30)
 scheduler.add_job(sync_stock_realtime, trigger=IntervalTrigger(minutes=1), id='stock_realtime_job', replace_existing=True, max_instances=1)  # ← 每分钟同步股票实时行情
+scheduler.add_job(sync_stock_screening_data, 'cron', hour=16, minute=35)  # ← 每日收盘后同步多因子筛选数据
 
 
 # ✅ 关键修复：在这里局部导入，避免顶层循环
@@ -65,6 +68,7 @@ from routes.fund_detail import fund_detail_bp
 from routes.stock_market_overview import stock_overview_bp
 from routes.stock_watchlist import stock_watchlist_bp
 from routes.stock_realtime import stock_realtime_bp
+from routes.stock_screening import stock_screening_bp
 app.register_blueprint(watchlist_bp, url_prefix='/api/watchlist')
 app.register_blueprint(fund_rank_bp, url_prefix='/api/funds')
 app.register_blueprint(holding_bp, url_prefix='/api/holding')
@@ -72,6 +76,7 @@ app.register_blueprint(fund_detail_bp, url_prefix='/api/fund_detail')
 app.register_blueprint(stock_overview_bp, url_prefix='/api/stock')
 app.register_blueprint(stock_watchlist_bp, url_prefix='/api/stock/watchlist')
 app.register_blueprint(stock_realtime_bp, url_prefix='/api/stock')
+app.register_blueprint(stock_screening_bp)  # 多因子选股API
 app.register_blueprint(fund_lab_bp, url_prefix='/api/lab')
 app.register_blueprint(fund_backtest_bp, url_prefix='/api/backtest')
 # ====== 路由（保持原样）======
@@ -100,4 +105,4 @@ def debug_sync_fund_basic_info():
     return {"status": "success", "message": "基金基本信息已同步"}
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host=config['HOST'], port=config['PORT'], debug=config['DEBUG'])
