@@ -1,0 +1,16 @@
+# 股票数据定时同步任务
+# 配置方式: crontab -e 然后复制以下行
+
+# 方案1: 使用Flask内置定时任务（已在app.py中配置）
+# 每天凌晨1点执行全量同步：实时行情 + 财务因子 + 动量因子
+# 无需手动添加crontab，Flask启动时自动加载
+
+# 方案2: 使用crontab（如果Flask定时任务不生效）
+# 每天凌晨1点执行
+# 0 1 * * * cd /home/clawdbot/.openclaw/workspace/Fund_backend && ./venv/bin/python tasks/sync_all_stock_data.py >> /tmp/sync_all_stock.log 2>&1
+
+# 现有定时任务参考:
+# - 每天16:00 同步实时行情 (sync_stock_screening.py)
+# - 每天16:30 同步多因子筛选数据 (sync_stock_screening.py)
+# - 每天凌晨1点 全量同步股票数据 (sync_all_stock_data.py) ⬅️ 新增
+# - 每周六 同步财务因子 (sync_stock_financial.py)

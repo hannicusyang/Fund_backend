@@ -1,0 +1,11 @@
+# 股票多因子数据定时同步任务
+# 配置方式: crontab -e 然后复制以下行
+
+# 每天收盘后(16:00)执行数据同步 - 实时行情+动量因子
+0 16 * * 1-5 cd /home/clawdbot/.openclaw/workspace/Fund_backend && ./venv/bin/python tasks/sync_stock_screening.py >> /tmp/stock_sync.log 2>&1
+
+# 每天收盘后(16:30)同步财务因子数据 (ROE、毛利率、净利率等)
+30 16 * * 1-5 cd /home/clawdbot/.openclaw/workspace/Fund_backend && ./venv/bin/python tasks/sync_stock_financial.py --limit 100 >> /tmp/stock_financial.log 2>&1
+
+# 每周六早上9点同步全量财务数据
+0 9 * * 6 cd /home/clawdbot/.openclaw/workspace/Fund_backend && ./venv/bin/python tasks/sync_stock_financial.py --limit 500 >> /tmp/stock_financial_full.log 2>&1

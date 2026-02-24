@@ -57,6 +57,27 @@ scheduler.add_job(
     minute=0
 )
 
+# 凌晨1点全量同步股票数据（用字符串引用避免循环导入）
+def run_sync_all_stock():
+    from tasks.sync_all_stock_data import main
+    main()
+
+scheduler.add_job(run_sync_all_stock, 'cron', hour=1, minute=0)
+
+# 每天凌晨2点同步指数历史数据
+def run_sync_index_history():
+    from tasks.sync_index_history import sync_index_history_data
+    sync_index_history_data()
+
+scheduler.add_job(run_sync_index_history, 'cron', hour=2, minute=30)
+
+# 每天凌晨3点同步基金历史净值
+def run_sync_fund_history():
+    from tasks.fund_history_to_mysql import sync_fund_history
+    sync_fund_history()
+
+scheduler.add_job(run_sync_fund_history, 'cron', hour=3, minute=0)
+
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 
@@ -70,6 +91,7 @@ from routes.stock_watchlist import stock_watchlist_bp
 from routes.stock_realtime import stock_realtime_bp
 from routes.stock_screening import stock_screening_bp
 from routes.stock_kline import stock_kline_bp
+from routes.stock_factor_api import stock_factor_bp  # ← 新增多因子API
 app.register_blueprint(watchlist_bp, url_prefix='/api/watchlist')
 app.register_blueprint(fund_rank_bp, url_prefix='/api/funds')
 app.register_blueprint(holding_bp, url_prefix='/api/holding')
@@ -77,6 +99,7 @@ app.register_blueprint(fund_detail_bp, url_prefix='/api/fund_detail')
 app.register_blueprint(stock_overview_bp, url_prefix='/api/stock')
 app.register_blueprint(stock_watchlist_bp, url_prefix='/api/stock/watchlist')
 app.register_blueprint(stock_realtime_bp, url_prefix='/api/stock')
+app.register_blueprint(stock_factor_bp)  # 专业版多因子API
 app.register_blueprint(stock_screening_bp)  # 多因子选股API
 app.register_blueprint(stock_kline_bp, url_prefix='/api/stock')  # K线数据API
 app.register_blueprint(fund_lab_bp, url_prefix='/api/lab')
@@ -107,4 +130,4 @@ def debug_sync_fund_basic_info():
     return {"status": "success", "message": "基金基本信息已同步"}
 
 if __name__ == '__main__':
-    app.run(host=config['HOST'], port=config['PORT'], debug=config['DEBUG'])
+    app.run(host=config['HOST'], port=config['PORT'], debug=False)

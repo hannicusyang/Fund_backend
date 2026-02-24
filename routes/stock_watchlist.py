@@ -41,14 +41,14 @@ def remove_from_watchlist(stock_code):
 
     # 查找自选记录
     watch_item = StockWatchlist.query.filter_by(user_id=USER_ID, stock_code=stock_code).first()
-    if not watch_item:
-        return jsonify({"success": False, "message": "未在自选清单中"}), 404
-
-    # 删除自选记录
-    db.session.delete(watch_item)
-    db.session.commit()
-
-    return jsonify({"success": True, "message": "已移除自选清单"}), 200
+    if watch_item:
+        # 删除自选记录
+        db.session.delete(watch_item)
+        db.session.commit()
+        return jsonify({"success": True, "message": "已移除自选清单"}), 200
+    else:
+        # 已经不在自选中，也返回成功（幂等性）
+        return jsonify({"success": True, "message": "不在自选清单中"}), 200
 
 
 @stock_watchlist_bp.route('/list', methods=['GET'])
