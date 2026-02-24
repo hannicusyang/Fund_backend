@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request
 from models import db, StockWatchlist
+from models.stock_screening import StockScreening
 
 stock_watchlist_bp = Blueprint('stock_watchlist', __name__)
 
@@ -53,17 +54,29 @@ def remove_from_watchlist(stock_code):
 
 @stock_watchlist_bp.route('/list', methods=['GET'])
 def get_watchlist():
-    """获取自选清单"""
+    """获取自选清单（含实时价格和动量数据）"""
     items = StockWatchlist.query.filter_by(user_id=USER_ID) \
         .order_by(StockWatchlist.added_at.desc()) \
         .all()
 
     result = []
     for item in items:
+        # 查询股票实时数据
+        stock_data = StockScreening.query.filter_by(stock_code=item.stock_code).first()
+        
         result.append({
             "stock_code": item.stock_code,
             "stock_name": item.stock_name,
-            "added_at": item.added_at.isoformat() if item.added_at else None
+            "added_at": item.added_at.isoformat() if item.added_at else None,
+            "latest_price": stock_data.latest_price if stock_data and stock_data.latest_price else 0,
+            "change_5d": stock_data.change_5d if stock_data and stock_data.change_5d else 0,
+            "change_10d": stock_data.change_10d if stock_data and stock_data.change_10d else 0,
+            "change_20d": stock_data.change_20d if stock_data and stock_data.change_20d else 0,
+            "change_percent": stock_data.change_percent if stock_data and stock_data.change_percent else 0,
+            "volume": stock_data.volume if stock_data and stock_data.volume else 0,
+            "turnover_rate": stock_data.turnover_rate if stock_data and stock_data.turnover_rate else 0,
+            "pe": stock_data.pe if stock_data and stock_data.pe else None,
+            "market_cap": stock_data.market_cap if stock_data and stock_data.market_cap else None,
         })
 
     return jsonify({
