@@ -70,6 +70,17 @@ class StockFactorService:
                     print(f"DEBUG: Column {factor_key} not found in model")
                     continue
                 
+                # 检查该字段是否有非空数据，如果没有则跳过该筛选条件
+                has_data = db.session.query(
+                    StockScreeningData.query.filter(
+                        column.isnot(None)
+                    ).exists()
+                ).scalar()
+                
+                if not has_data:
+                    print(f"DEBUG: Column {factor_key} has no data, skipping filter")
+                    continue
+                
                 min_val, max_val = float(range_vals[0]), float(range_vals[1])
                 print(f"DEBUG: Filtering {factor_key}: {min_val} <= x <= {max_val}")
                 # 筛选: 字段值在指定范围内 (过滤掉NULL值，确保筛选有效)
