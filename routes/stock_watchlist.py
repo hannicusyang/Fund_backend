@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 from models import db, StockWatchlist
-from models.stock_screening import StockScreening
+from models.stock_screening import StockScreeningData
 
 stock_watchlist_bp = Blueprint('stock_watchlist', __name__)
 
@@ -62,7 +62,7 @@ def get_watchlist():
     result = []
     for item in items:
         # 查询股票实时数据
-        stock_data = StockScreening.query.filter_by(stock_code=item.stock_code).first()
+        stock_data = StockScreeningData.query.filter_by(stock_code=item.stock_code).first()
         
         result.append({
             "stock_code": item.stock_code,
