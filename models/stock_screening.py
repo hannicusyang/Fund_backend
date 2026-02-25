@@ -35,19 +35,47 @@ class StockScreeningData(db.Model):
     pe = db.Column(db.DECIMAL(10, 4), comment='市盈率PE')
     pb = db.Column(db.DECIMAL(10, 4), comment='市净率PB')
     ps = db.Column(db.DECIMAL(10, 4), comment='市销率PS')
+    pcf = db.Column(db.DECIMAL(10, 4), comment='市现率PCF')
+    dividend_yield = db.Column(db.DECIMAL(10, 4), comment='股息率%')
     
     # ===== 动量因子 =====
     change_5d = db.Column(db.DECIMAL(10, 4), comment='5日涨跌幅%')
     change_10d = db.Column(db.DECIMAL(10, 4), comment='10日涨跌幅%')
     change_20d = db.Column(db.DECIMAL(10, 4), comment='20日涨跌幅%')
     change_60d = db.Column(db.DECIMAL(10, 4), comment='60日涨跌幅%')
+    mom_1m = db.Column(db.DECIMAL(10, 4), comment='1月动量%')
+    mom_3m = db.Column(db.DECIMAL(10, 4), comment='3月动量%')
+    mom_6m = db.Column(db.DECIMAL(10, 4), comment='6月动量%')
+    high_52w_ratio = db.Column(db.DECIMAL(10, 4), comment='52周新高比%')
+    mom_accel = db.Column(db.DECIMAL(10, 4), comment='动量加速度%')
     
     # ===== 质量因子 =====
     roe = db.Column(db.DECIMAL(10, 4), comment='净资产收益率ROE%')
+    roa = db.Column(db.DECIMAL(10, 4), comment='总资产收益率ROA%')
     gross_margin = db.Column(db.DECIMAL(10, 4), comment='毛利率%')
     net_profit_margin = db.Column(db.DECIMAL(10, 4), comment='净利率%')
+    asset_turnover = db.Column(db.DECIMAL(10, 4), comment='资产周转率')
+    
+    # ===== 成长因子 =====
     revenue_growth = db.Column(db.DECIMAL(10, 4), comment='营收增长率%')
     profit_growth = db.Column(db.DECIMAL(10, 4), comment='利润增长率%')
+    revenue_cagr_3y = db.Column(db.DECIMAL(10, 4), comment='营收3年CAGR%')
+    profit_cagr_3y = db.Column(db.DECIMAL(10, 4), comment='利润3年CAGR%')
+    
+    # ===== 波动因子 =====
+    volatility = db.Column(db.DECIMAL(10, 4), comment='年化波动率%')
+    atr = db.Column(db.DECIMAL(10, 4), comment='ATR')
+    max_drawdown = db.Column(db.DECIMAL(10, 4), comment='最大回撤%')
+    downside_vol = db.Column(db.DECIMAL(10, 4), comment='下行波动率%')
+    
+    # ===== 技术因子 =====
+    rsi = db.Column(db.DECIMAL(10, 4), comment='RSI')
+    macd = db.Column(db.DECIMAL(10, 4), comment='MACD')
+    ma_bull = db.Column(db.DECIMAL(3, 0), comment='均线多头0/1')
+    
+    # ===== 情绪因子 =====
+    turnover_change = db.Column(db.DECIMAL(10, 4), comment='换手率变化%')
+    volume_ratio = db.Column(db.DECIMAL(10, 4), comment='量比')
     
     # ===== 规模因子 =====
     market_cap = db.Column(db.DECIMAL(20, 4), comment='总市值(亿元)')

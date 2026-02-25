@@ -15,3 +15,4 @@ from .stock_screening import StockScreeningData  # ← 新增多因子筛选数�
 from .index_history import IndexHistory, BENCHMARK_INDICES  # ← 新增基准指数
 from .fund_portfolio import FundPortfolio, FundPortfolioItem  # ← 新增组合模型
 from .factor_definition import ScreeningStrategy  # ← 新增筛选策略
+from .stock_strategy import PortfolioConfig, BacktestTemplate, UserFactorPreference, BacktestReport  # ← 新增股票策略

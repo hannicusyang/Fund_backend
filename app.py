@@ -21,6 +21,7 @@ from tasks.fund_history_to_mysql import sync_all_watched_funds
 from tasks.sync_stock_market_overview import sync_all_stock_overview
 from tasks.sync_stock_realtime import sync_stock_realtime
 from tasks.sync_stock_screening import sync_stock_screening_data  # ← 新增股票实时行情同步
+# from tasks.data_collection import run_data_collection  # ← 延迟导入避免循环
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
@@ -44,6 +45,18 @@ scheduler.add_job(sync_all_watched_funds, 'cron', id='fund_watched_sync', hour=0
 scheduler.add_job(sync_all_stock_overview, 'cron', hour=16, minute=30)
 scheduler.add_job(sync_stock_realtime, trigger=IntervalTrigger(minutes=1), id='stock_realtime_job', replace_existing=True, max_instances=1)  # ← 每分钟同步股票实时行情
 scheduler.add_job(sync_stock_screening_data, 'cron', hour=16, minute=35)  # ← 每日收盘后同步多因子筛选数据
+
+# 每天凌晨4点采集股票因子数据（延迟导入避免循环）
+def run_stock_data_collection():
+    from tasks.data_collection import run_data_collection
+    run_data_collection()
+scheduler.add_job(run_stock_data_collection, 'cron', hour=4, minute=0)  # ← 每天凌晨4点采集
+
+# 每天凌晨2点同步波动率数据（用字符串引用避免循环导入）
+def run_sync_volatility():
+    from tasks.sync_stock_volatility import sync_all_volatility
+    sync_all_volatility()
+scheduler.add_job(run_sync_volatility, 'cron', hour=2, minute=0)  # ← 每日凌晨2点同步波动率数据
 
 
 # ✅ 关键修复：在这里局部导入，避免顶层循环
@@ -92,6 +105,9 @@ from routes.stock_realtime import stock_realtime_bp
 from routes.stock_screening import stock_screening_bp
 from routes.stock_kline import stock_kline_bp
 from routes.stock_factor_api import stock_factor_bp  # ← 新增多因子API
+from routes.stock_backtest import stock_backtest_bp  # 股票回测API
+from routes.stock_backtest_pro import stock_backtest_pro_bp  # 专业回测API
+from routes.stock_strategy_api import stock_strategy_bp  # 策略持久化API
 app.register_blueprint(watchlist_bp, url_prefix='/api/watchlist')
 app.register_blueprint(fund_rank_bp, url_prefix='/api/funds')
 app.register_blueprint(holding_bp, url_prefix='/api/holding')
@@ -104,6 +120,9 @@ app.register_blueprint(stock_screening_bp)  # 多因子选股API
 app.register_blueprint(stock_kline_bp, url_prefix='/api/stock')  # K线数据API
 app.register_blueprint(fund_lab_bp, url_prefix='/api/lab')
 app.register_blueprint(fund_backtest_bp, url_prefix='/api/backtest')
+app.register_blueprint(stock_backtest_bp, url_prefix='/api/stock')  # 股票回测API
+app.register_blueprint(stock_backtest_pro_bp, url_prefix='/api/stock')  # 专业回测API
+app.register_blueprint(stock_strategy_bp, url_prefix='/api/strategy')  # 策略持久化API
 # ====== 路由（保持原样）======
 @app.route('/api/run-task')
 def manual_run():

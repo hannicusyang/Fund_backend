@@ -571,3 +571,249 @@ def get_kline_with_indicators(stock_code):
             "data": [],
             "message": f"获取失败: {str(e)}"
         }), 500
+
+
+# ====== 回测分析API ======
+@stock_kline_bp.route('/api/stock/backtest', methods=['POST'])
+def backtest_portfolio():
+    """组合回测分析"""
+    try:
+        data = request.json or {}
+        stocks = data.get('stocks', [])
+        weights = data.get('weights', [])
+        days = int(data.get('days', 60))
+        initial_capital = int(data.get('initialCapital', 100000))
+        benchmark_code = data.get('benchmark', 'sh.000300')  # 默认沪深300
+        
+        if not stocks or not weights:
+            return jsonify({'success': False, 'message': '参数不完整'}), 400
+        
+        if len(stocks) != len(weights):
+            return jsonify({'success': False, 'message': '股票和权重数量不匹配'}), 400
+        
+        # 登录baostock
+        lg = bs.login()
+        if lg.error_code != '0':
+            return jsonify({'success': False, 'message': f'登录失败: {lg.error_msg}'}), 500
+        
+        # 计算日期范围
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        start_date = (datetime.now() - timedelta(days=days + 30)).strftime('%Y-%m-%d')
+        
+        # 获取组合历史数据
+        stock_data = {}
+        for stock_code in stocks:
+            # 判断交易所
+            if stock_code.startswith('6'):
+                bs_code = f"sh.{stock_code}"
+            elif stock_code.startswith(('0', '3')):
+                bs_code = f"sz.{stock_code}"
+            else:
+                continue
+            
+            rs = bs.query_history_k_data_plus(
+                bs_code,
+                'date,close',
+                start_date=start_date,
+                end_date=end_date,
+                frequency='d'
+            )
+            
+            data_list = []
+            while rs.error_code == '0' and rs.next():
+                data_list.append(rs.get_row_data())
+            
+            if data_list:
+                # 转换为日期->价格映射
+                for row in data_list:
+                    if len(row) >= 2 and row[1]:
+                        date_str = row[0]
+                        try:
+                            price = float(row[1])
+                            if date_str not in stock_data:
+                                stock_data[date_str] = {}
+                            stock_data[date_str][stock_code] = price
+                        except:
+                            pass
+        
+        bs.logout()
+        
+        if not stock_data:
+            return jsonify({'success': False, 'message': '无法获取历史数据'}), 500
+        
+        # 按日期排序
+        sorted_dates = sorted(stock_data.keys())
+        sorted_dates = sorted_dates[-days:]  # 只取最后days天
+        
+        # 计算每日组合收益率
+        portfolio_values = [100]  # 初始资金100
+        benchmark_values = [100]  # 沪深300指数
+        
+        # 获取基准指数数据
+        benchmark_data = {}
+        benchmark_name = '基准'
+        try:
+            lg = bs.login()
+            # 基准指数映射
+            benchmark_map = {
+                'sh.000001': ('上证指数', 'sh.000001'),
+                'sh.000300': ('沪深300', 'sh.000300'),
+                'sz.399001': ('深证成指', 'sz.399001'),
+                'sz.399006': ('创业板指', 'sz.399006')
+            }
+            bs_code = benchmark_map.get(benchmark_code, ('沪深300', 'sh.000300'))[1]
+            benchmark_name = benchmark_map.get(benchmark_code, ('沪深300', 'sh.000300'))[0]
+            
+            rs = bs.query_history_k_data_plus(
+                bs_code,
+                'date,close',
+                start_date=sorted_dates[0],
+                end_date=sorted_dates[-1],
+                frequency='d'
+            )
+            while rs.error_code == '0' and rs.next():
+                row = rs.get_row_data()
+                if len(row) >= 2 and row[1]:
+                    try:
+                        benchmark_data[row[0]] = float(row[1])
+                    except:
+                        pass
+            bs.logout()
+        except:
+            pass
+        
+        prev_portfolio_value = 100
+        prev_benchmark_value = 100
+        
+        portfolio_returns = []
+        
+        for i, date in enumerate(sorted_dates):
+            if date not in stock_data:
+                portfolio_values.append(portfolio_values[-1])
+                benchmark_values.append(benchmark_values[-1])
+                continue
+            
+            day_data = stock_data[date]
+            
+            # 计算组合当日价值
+            portfolio_value = 0
+            valid_weights = 0
+            
+            for j, stock_code in enumerate(stocks):
+                if stock_code in day_data and weights[j] > 0:
+                    # 获取前一日价格计算收益率
+                    if i > 0 and date in stock_data:
+                        prev_date = sorted_dates[i-1]
+                        if prev_date in stock_data and stock_code in stock_data[prev_date]:
+                            prev_price = stock_data[prev_date][stock_code]
+                            curr_price = day_data[stock_code]
+                            if prev_price > 0:
+                                daily_return = (curr_price - prev_price) / prev_price
+                                portfolio_value += weights[j] * (1 + daily_return)
+                                valid_weights += weights[j]
+            
+            if valid_weights > 0:
+                portfolio_value = portfolio_value / valid_weights * prev_portfolio_value
+            else:
+                portfolio_value = prev_portfolio_value
+            
+            portfolio_values.append(portfolio_value)
+            prev_portfolio_value = portfolio_value
+            
+            # 基准收益
+            if date in benchmark_data and prev_benchmark_value > 0:
+                benchmark_return = (benchmark_data[date] - prev_benchmark_value) / prev_benchmark_value
+                benchmark_value = prev_benchmark_value * (1 + benchmark_return)
+                benchmark_values.append(benchmark_value)
+                prev_benchmark_value = benchmark_value
+            else:
+                benchmark_values.append(benchmark_values[-1])
+        
+        # 计算回测指标
+        portfolio_values = portfolio_values[1:]  # 移除初始值
+        benchmark_values = benchmark_values[1:]
+        
+        if not portfolio_values or portfolio_values[-1] == 0:
+            return jsonify({'success': False, 'message': '数据不足'}), 500
+        
+        # 累计收益率
+        cumulative_return = (portfolio_values[-1] - 100) / 100 * 100
+        
+        # 年化收益率
+        annual_return = cumulative_return / days * 365
+        
+        # 最大回撤
+        max_value = portfolio_values[0]
+        max_drawdown = 0
+        for v in portfolio_values:
+            if v > max_value:
+                max_value = v
+            drawdown = (max_value - v) / max_value * 100
+            if drawdown > max_drawdown:
+                max_drawdown = drawdown
+        
+        # 计算日收益率序列
+        daily_returns = []
+        for i in range(1, len(portfolio_values)):
+            ret = (portfolio_values[i] - portfolio_values[i-1]) / portfolio_values[i-1]
+            daily_returns.append(ret)
+        
+        # 夏普比率
+        if daily_returns:
+            avg_return = sum(daily_returns) / len(daily_returns)
+            std_return = (sum((r - avg_return) ** 2 for r in daily_returns) / len(daily_returns)) ** 0.5
+            sharpe_ratio = (avg_return * 252 - 0.025) / (std_return * (252 ** 0.5)) if std_return > 0 else 0
+        else:
+            sharpe_ratio = 0
+        
+        # 胜率
+        win_days = sum(1 for r in daily_returns if r > 0)
+        win_rate = win_days / len(daily_returns) * 100 if daily_returns else 0
+        
+        # 基准收益
+        benchmark_return = (benchmark_values[-1] - 100) / 100 * 100
+        excess_return = cumulative_return - benchmark_return
+        
+        # 更多风险指标
+        # Sortino比率 (只考虑下行波动)
+        downside_returns = [r for r in daily_returns if r < 0]
+        downside_std = (sum(r ** 2 for r in downside_returns) / len(daily_returns)) ** 0.5 if downside_returns else 0
+        sortino_ratio = (avg_return * 252 - 0.025) / (downside_std * (252 ** 0.5)) if downside_std > 0 else 0
+        
+        # Calmar比率 = 年化收益 / 最大回撤
+        calmar_ratio = annual_return / max_drawdown if max_drawdown > 0 else 0
+        
+        # VaR (Value at Risk)
+        sorted_returns = sorted(daily_returns)
+        var_95_idx = int(len(sorted_returns) * 0.05)
+        var_95 = sorted_returns[var_95_idx] * 100 if sorted_returns else 0
+        
+        # 收益曲线（转换为百分比）
+        portfolio_curve = [(v - 100) / 100 * 100 for v in portfolio_values]
+        benchmark_curve = [(v - 100) / 100 * 100 for v in benchmark_values]
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'cumulativeReturn': cumulative_return,
+                'annualReturn': annual_return,
+                'maxDrawdown': -max_drawdown,
+                'sharpeRatio': sharpe_ratio,
+                'sortinoRatio': sortino_ratio,
+                'calmarRatio': calmar_ratio,
+                'var95': var_95,
+                'winRate': win_rate,
+                'tradeCount': len([r for r in daily_returns if abs(r) > 0.001]),
+                'benchmarkReturn': benchmark_return,
+                'excessReturn': excess_return,
+                'dates': sorted_dates,
+                'portfolioCurve': portfolio_curve,
+                'benchmarkCurve': benchmark_curve
+            }
+        })
+        
+    except Exception as e:
+        print(f"回测错误: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500

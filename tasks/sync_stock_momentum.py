@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import app
 from models import db
 from models.stock_screening import StockScreeningData
+from sqlalchemy import func
 
 
 def get_momentum_for_stock(stock_code, trade_date):
@@ -81,10 +82,17 @@ def get_momentum_for_stock(stock_code, trade_date):
             if price_20d > 0:
                 change_20d = round((latest_close - price_20d) / price_20d * 100, 2)
         
+        change_60d = None
+        if len(df) >= 61:
+            price_60d = float(df['close'].iloc[-61])
+            if price_60d > 0:
+                change_60d = round((latest_close - price_60d) / price_60d * 100, 2)
+        
         return {
             'change_5d': Decimal(str(change_5d)) if change_5d else None,
             'change_10d': Decimal(str(change_10d)) if change_10d else None,
             'change_20d': Decimal(str(change_20d)) if change_20d else None,
+            'change_60d': Decimal(str(change_60d)) if change_60d else None,
         }
         
     except Exception as e:
@@ -110,13 +118,18 @@ def sync_momentum_data(limit=200):
     print("登录成功!")
     
     with app.app_context():
-        today = date.today()
+        # 获取最新交易日期
+        latest_date = db.session.query(func.max(StockScreeningData.trade_date)).scalar()
+        print(f"最新交易日期: {latest_date}")
         
         # 获取需要同步的股票（没有动量数据的，按市值排序）
         stocks = StockScreeningData.query.filter_by(
-            trade_date=today
+            trade_date=latest_date
         ).filter(
-            StockScreeningData.change_20d.is_(None)
+            db.or_(
+                StockScreeningData.change_20d.is_(None),
+                StockScreeningData.change_60d.is_(None)
+            )
         ).order_by(
             StockScreeningData.market_cap.desc()
         ).limit(limit).all()
@@ -133,12 +146,13 @@ def sync_momentum_data(limit=200):
             
             # 不再跳过，每只股票都重新获取
             
-            momentum = get_momentum_for_stock(stock.stock_code, today)
+            momentum = get_momentum_for_stock(stock.stock_code, latest_date)
             
             if momentum:
                 stock.change_5d = momentum['change_5d']
                 stock.change_10d = momentum['change_10d']
                 stock.change_20d = momentum['change_20d']
+                stock.change_60d = momentum['change_60d']  # 添加60日涨跌幅
                 success_count += 1
             else:
                 fail_count += 1

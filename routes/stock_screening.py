@@ -35,6 +35,23 @@ def screen_stocks():
         else:
             params = request.args.to_dict()
         
+        # 支持前端嵌套的filters格式: {filters: {valuation_pe: [0,10], ...}}
+        print(f"[DEBUG] 原始params keys: {list(params.keys())}")
+        if 'filters' in params and isinstance(params.get('filters'), dict):
+            print("[DEBUG] Found filters, processing...")
+            # 将filters中的数组转换为逗号分隔的字符串
+            for key, value in params['filters'].items():
+                if isinstance(value, (list, tuple)) and len(value) == 2:
+                    params[key] = f"{value[0]},{value[1]}"
+                else:
+                    params[key] = value
+            # 移除filters键
+            params.pop('filters', None)
+        
+        # 处理sortBy -> sort_by
+        if 'sortBy' in params:
+            params['sort_by'] = params.pop('sortBy')
+        
         print(f"[多因子选股] 收到请求: {params}")
         
         # 获取最新日期的数据

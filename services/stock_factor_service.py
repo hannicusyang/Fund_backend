@@ -17,15 +17,19 @@ class StockFactorService:
     
     @classmethod
     def get_factor_definitions(cls):
-        """获取所有因子定义"""
+        """获取所有因子定义 - 返回完整信息"""
         result = {}
         for category_key, category in FACTOR_CATEGORIES.items():
             result[category_key] = {}
             for factor in category['factors']:
                 result[category_key][factor['key']] = {
+                    'name': factor['name'],  # 中文名称
                     'min': factor['min'],
                     'max': factor['max'],
-                    'default': [factor['defaultMin'], factor['defaultMax']]
+                    'default': [factor['defaultMin'], factor['defaultMax']],
+                    'unit': factor.get('unit', ''),
+                    'description': factor.get('description', ''),
+                    'direction': factor.get('direction', 0)
                 }
         return result
     
@@ -48,15 +52,22 @@ class StockFactorService:
                       page=1, page_size=20):
         """多因子选股筛选"""
         try:
-            # 获取最新交易日
-            latest_record = StockScreeningData.query.order_by(
-                StockScreeningData.trade_date.desc()
-            ).first()
+            # 获取最新有足够数据的交易日（至少1000条记录）
+            from sqlalchemy import func
             
-            if not latest_record:
+            # 先获取有价格数据的日期，按记录数排序
+            date_stats = db.session.query(
+                StockScreeningData.trade_date,
+                func.count().label('cnt')
+            ).filter(
+                StockScreeningData.latest_price.isnot(None)
+            ).group_by(StockScreeningData.trade_date).order_by(func.count().desc()).all()
+            
+            if not date_stats:
                 return {'success': False, 'message': '暂无股票数据', 'data': [], 'total': 0}
             
-            trade_date = latest_record.trade_date
+            # 使用记录数最多的日期
+            trade_date = date_stats[0][0]
             
             # 基础查询
             query = StockScreeningData.query.filter(
@@ -64,30 +75,68 @@ class StockFactorService:
             )
             
             # 应用筛选条件
+            # 前端filter key到数据库列名的映射
+            key_mapping = {
+                'valuation_pe': 'pe',
+                'valuation_pb': 'pb',
+                'valuation_ps': 'ps',
+                'momentum_change_percent': 'change_percent',
+                'momentum_change5d': 'change_5d',
+                'momentum_change10d': 'change_10d',
+                'momentum_change20d': 'change_20d',
+                'momentum_change60d': 'change_60d',
+                'momentum_turnover_rate': 'turnover_rate',
+                'quality_roe': 'roe',
+                'quality_gross_margin': 'gross_margin',
+                'quality_net_profit_margin': 'net_profit_margin',
+                'growth_revenue_growth': 'revenue_growth',
+                'growth_profit_growth': 'profit_growth',
+                'scale_market_cap': 'market_cap',
+                'scale_circulating_cap': 'circulating_cap'
+            }
+            
             for factor_key, range_vals in filters.items():
-                column = getattr(StockScreeningData, factor_key, None)
+                # 转换key名称
+                column_name = key_mapping.get(factor_key, factor_key)
+                column = getattr(StockScreeningData, column_name, None)
                 if column is None:
-                    print(f"DEBUG: Column {factor_key} not found in model")
+                    print(f"DEBUG: Column {column_name} (from {factor_key}) not found in model")
                     continue
                 
-                # 检查该字段是否有非空数据，如果没有则跳过该筛选条件
-                has_data = db.session.query(
-                    StockScreeningData.query.filter(
-                        column.isnot(None)
-                    ).exists()
-                ).scalar()
+                # 检查该字段是否有足够的数据（至少10%的股票有数据），否则跳过该筛选条件
+                total_count = db.session.query(StockScreeningData.id).filter(
+                    StockScreeningData.trade_date == trade_date
+                ).count()
                 
-                if not has_data:
-                    print(f"DEBUG: Column {factor_key} has no data, skipping filter")
+                data_count = db.session.query(StockScreeningData.id).filter(
+                    StockScreeningData.trade_date == trade_date,
+                    column.isnot(None)
+                ).count()
+                
+                # 如果数据覆盖率低于50%，跳过该筛选条件（数据不完整）
+                if data_count < total_count * 0.5:
+                    print(f"DEBUG: Column {column_name} has only {data_count}/{total_count} records ({data_count/total_count*100:.1f}%), skipping filter")
                     continue
+                
+                from sqlalchemy import or_
                 
                 min_val, max_val = float(range_vals[0]), float(range_vals[1])
-                print(f"DEBUG: Filtering {factor_key}: {min_val} <= x <= {max_val}")
-                # 筛选: 字段值在指定范围内 (过滤掉NULL值，确保筛选有效)
+                
+                # 检查该字段的数据覆盖率
+                data_count = db.session.query(StockScreeningData.id).filter(
+                    StockScreeningData.trade_date == trade_date,
+                    column.isnot(None)
+                ).count()
+                
+                # 如果数据覆盖率低于80%，跳过该筛选条件（数据不完整，不应该过滤）
+                coverage = data_count / total_count if total_count > 0 else 0
+                if coverage < 0.8:
+                    print(f"DEBUG: Column {column_name} has only {data_count}/{total_count} records ({coverage*100:.1f}%), skipping filter")
+                    continue
+                
+                # 筛选: 字段值在指定范围内 (NULL值也通过，不被过滤)
                 query = query.filter(
-                    column.isnot(None),
-                    column >= min_val,
-                    column <= max_val
+                    or_(column.is_(None), (column >= min_val) & (column <= max_val))
                 )
             
             # 排序 (MySQL不支持NULLS LAST，使用IFNULL处理)
