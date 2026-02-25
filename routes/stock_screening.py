@@ -3,8 +3,9 @@
 # 从数据库读取预同步的数据，支持全部因子筛选
 
 from flask import Blueprint, request, jsonify
+from models import db
 from models.stock_screening import StockScreeningData
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, func
 from datetime import datetime
 import time
 
@@ -361,18 +362,33 @@ def get_stocks_by_codes():
         if not codes:
             return jsonify({"success": True, "data": []})
         
-        # 获取最新日期的数据
-        latest = StockScreeningData.query.order_by(
-            StockScreeningData.trade_date.desc()
-        ).first()
+        # 去掉 sh. sz. 前缀
+        clean_codes = []
+        for c in codes:
+            if isinstance(c, str):
+                c = c.replace('sh.', '').replace('sz.', '').replace('SH.', '').replace('SZ.', '')
+                if c:
+                    clean_codes.append(c)
         
-        if not latest:
+        if not clean_codes:
+            return jsonify({"success": True, "data": []})
+        
+        # 获取最新日期的数据（选择记录数最多的日期）
+        from sqlalchemy import func
+        date_with_most = db.session.query(
+            StockScreeningData.trade_date,
+            func.count(StockScreeningData.id).label('cnt')
+        ).group_by(StockScreeningData.trade_date).order_by(db.text('cnt DESC')).first()
+        
+        if not date_with_most:
             return jsonify({"success": False, "message": "暂无数据"})
+        
+        latest_date = date_with_most[0]
         
         # 查询指定股票
         stocks = StockScreeningData.query.filter(
-            StockScreeningData.trade_date == latest.trade_date,
-            StockScreeningData.stock_code.in_(codes)
+            StockScreeningData.trade_date == latest_date,
+            StockScreeningData.stock_code.in_(clean_codes)
         ).all()
         
         result = [s.to_dict() for s in stocks]
