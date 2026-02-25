@@ -349,3 +349,38 @@ def trigger_sync():
         return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
+
+
+@stock_screening_bp.route('/api/stock/by_codes', methods=['POST'])
+def get_stocks_by_codes():
+    """根据股票代码列表获取数据"""
+    try:
+        data = request.get_json() or {}
+        codes = data.get('codes', [])
+        
+        if not codes:
+            return jsonify({"success": True, "data": []})
+        
+        # 获取最新日期的数据
+        latest = StockScreeningData.query.order_by(
+            StockScreeningData.trade_date.desc()
+        ).first()
+        
+        if not latest:
+            return jsonify({"success": False, "message": "暂无数据"})
+        
+        # 查询指定股票
+        stocks = StockScreeningData.query.filter(
+            StockScreeningData.trade_date == latest.trade_date,
+            StockScreeningData.stock_code.in_(codes)
+        ).all()
+        
+        result = [s.to_dict() for s in stocks]
+        
+        return jsonify({
+            "success": True,
+            "data": result
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
