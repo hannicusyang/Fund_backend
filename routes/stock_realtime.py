@@ -113,33 +113,33 @@ def get_data_from_db():
 
 
 def get_data_from_yesterday():
-    """从数据库获取昨日股票数据作为后备"""
+    """从数据库获取昨日/最新完整股票数据"""
     try:
         from datetime import timedelta
         from models.stock_screening import StockScreeningData
+        from sqlalchemy import func
         
-        yesterday = date.today() - timedelta(days=1)
+        # 找到数据最完整的日期
+        date_info = db.session.query(
+            StockScreeningData.trade_date, 
+            func.count(StockScreeningData.id).label('cnt')
+        ).group_by(StockScreeningData.trade_date).order_by(func.count(StockScreeningData.id).desc()).first()
         
-        # 找到最近的交易日数据
-        latest_record = StockScreeningData.query.filter(
-            StockScreeningData.trade_date <= yesterday
-        ).order_by(StockScreeningData.trade_date.desc()).first()
-        
-        if not latest_record:
-            print(f"[数据库] 昨日无数据")
+        if not date_info:
+            print(f"[数据库] 无数据")
             return None
         
-        yesterday_date = latest_record.trade_date
-        print(f"[数据库] 使用昨日({yesterday_date})数据")
+        best_date, count = date_info
+        print(f"[数据库] 使用最完整日期: {best_date} ({count}条)")
         
         records = StockScreeningData.query.filter(
-            StockScreeningData.trade_date == yesterday_date
+            StockScreeningData.trade_date == best_date
         ).all()
         
         if not records:
             return None
         
-        print(f"[数据库] 获取昨日 {len(records)} 条数据")
+        print(f"[数据库] 获取 {len(records)} 条数据")
         
         # 转换为API格式
         result = []
@@ -164,7 +164,7 @@ def get_data_from_yesterday():
         return result, 'screening_db'
         
     except Exception as e:
-        print(f"[数据库] 查询昨日数据失败: {e}")
+        print(f"[数据库] 查询数据失败: {e}")
         return None
 
 
@@ -329,16 +329,10 @@ def _parse_float(value):
 def get_stock_data():
     """
     获取股票数据的完整逻辑：
-    1. 优先从数据库读取今日数据
-    2. 数据库没有则从筛选数据表获取昨日数据
+    直接从筛选数据表获取最完整的数据
     """
-    # 1. 先尝试从数据库获取今日数据
-    db_result = get_data_from_db()
-    if db_result:
-        return db_result[0], db_result[1], 'db'
-    
-    # 2. 今日无数据，获取昨日筛选数据作为后备
-    print("[数据源] 今日无数据，尝试获取昨日筛选数据...")
+    # 直接获取最完整的数据
+    print("[数据源] 获取最完整的股票数据...")
     yesterday_result = get_data_from_yesterday()
     if yesterday_result:
         return yesterday_result[0], yesterday_result[1], 'screening_db'
