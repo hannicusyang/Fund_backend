@@ -45,9 +45,14 @@ def fetch_from_api():
     errors = []
     
     # 数据源列表，按优先级排序
-    # 东方财富数据最丰富，雪球/同花顺次之，新浪近期容易限流返回HTML错误页
     data_sources = [
-        ('东方财富', 'eastmoney', lambda: ak.stock_zh_a_spot_em()),
+        # 主板A股
+        ('东方财富全量', 'eastmoney', lambda: ak.stock_zh_a_spot_em()),
+        ('上海A股', 'sh_a', lambda: ak.stock_sh_a_spot_em()),
+        ('深圳A股', 'sz_a', lambda: ak.stock_sz_a_spot_em()),
+        ('创业板', 'cy_a', lambda: ak.stock_cy_a_spot_em()),
+        ('科创板', 'kc_a', lambda: ak.stock_kc_a_spot_em()),
+        ('新股', 'new_a', lambda: ak.stock_new_a_spot_em()),
         ('腾讯', 'tencent', lambda: ak.stock_zh_a_spot_tx()),
         ('雪球', 'xueqiu', lambda: ak.stock_zh_a_spot_xq()),
         ('同花顺', 'ths', lambda: ak.stock_zh_a_spot_ths()),
@@ -65,7 +70,7 @@ def fetch_from_api():
             errors.append(f"{name}连接失败")
             print(f"[数据源] {name}连接失败")
         except Exception as e:
-            error_msg = str(e)[:40]
+            error_msg = str(e)[:50]
             errors.append(f"{name}:{error_msg}")
             print(f"[数据源] {name}失败: {error_msg}")
     
@@ -104,6 +109,62 @@ def get_data_from_db():
         
     except Exception as e:
         print(f"[数据库] 查询失败: {e}")
+        return None
+
+
+def get_data_from_yesterday():
+    """从数据库获取昨日股票数据作为后备"""
+    try:
+        from datetime import timedelta
+        from models.stock_screening import StockScreeningData
+        
+        yesterday = date.today() - timedelta(days=1)
+        
+        # 找到最近的交易日数据
+        latest_record = StockScreeningData.query.filter(
+            StockScreeningData.trade_date <= yesterday
+        ).order_by(StockScreeningData.trade_date.desc()).first()
+        
+        if not latest_record:
+            print(f"[数据库] 昨日无数据")
+            return None
+        
+        yesterday_date = latest_record.trade_date
+        print(f"[数据库] 使用昨日({yesterday_date})数据")
+        
+        records = StockScreeningData.query.filter(
+            StockScreeningData.trade_date == yesterday_date
+        ).all()
+        
+        if not records:
+            return None
+        
+        print(f"[数据库] 获取昨日 {len(records)} 条数据")
+        
+        # 转换为API格式
+        result = []
+        for r in records:
+            result.append({
+                'code': r.stock_code,
+                'name': r.stock_name,
+                'latest_price': r.latest_price,
+                'change_percent': r.change_percent,
+                'change_amount': r.change_amount,
+                'open': r.open_price,
+                'high': r.high,
+                'low': r.low,
+                'volume': r.volume,
+                'turnover': r.turnover,
+                'turnover_rate': r.turnover_rate,
+                'pre_close': r.pre_close,
+                'trade_date': r.trade_date,
+                'fetch_time': str(r.fetch_time) if r.fetch_time else None
+            })
+        
+        return result, 'screening_db'
+        
+    except Exception as e:
+        print(f"[数据库] 查询昨日数据失败: {e}")
         return None
 
 
@@ -269,22 +330,20 @@ def get_stock_data():
     """
     获取股票数据的完整逻辑：
     1. 优先从数据库读取今日数据
-    2. 数据库没有则请求外部API
-    3. 外部API失败则返回错误
+    2. 数据库没有则从筛选数据表获取昨日数据
     """
-    # 1. 先尝试从数据库获取
+    # 1. 先尝试从数据库获取今日数据
     db_result = get_data_from_db()
     if db_result:
-        return db_result[0], db_result[1], 'db'  # data, source, cache_type
+        return db_result[0], db_result[1], 'db'
     
-    # 2. 数据库没有，从外部API获取
-    print("[数据源] 数据库无数据，尝试外部API...")
-    try:
-        df, source = get_cached_api_data()
-        data = df_to_api_format(df, source)
-        return data, source, 'api'
-    except Exception as e:
-        raise Exception(f"数据库无数据且外部API失败: {str(e)}")
+    # 2. 今日无数据，获取昨日筛选数据作为后备
+    print("[数据源] 今日无数据，尝试获取昨日筛选数据...")
+    yesterday_result = get_data_from_yesterday()
+    if yesterday_result:
+        return yesterday_result[0], yesterday_result[1], 'screening_db'
+    
+    raise Exception("无法获取股票数据")
 
 
 @stock_realtime_bp.route('/realtime', methods=['GET'])
