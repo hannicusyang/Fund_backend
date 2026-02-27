@@ -2,8 +2,26 @@
 from datetime import datetime, timezone
 
 import akshare as ak
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 import pandas as pd
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 import logging
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 from config.logging_config import logger
 from models import db
 from models.fund_list import FundList

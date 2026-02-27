@@ -1,6 +1,6 @@
 """
 股票实时行情数据同步任务
-定时从akshare获取A股实时行情并写入数据库
+数据源: tushare (第三方代理) > akshare > 其他
 """
 import akshare as ak
 import pandas as pd
@@ -9,6 +9,12 @@ from config.logging_config import logger
 from models import db
 from models.stock_estimation import StockEstimation
 from models.trading_day import TradingDay
+
+# 导入tushare工具
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro, get_stock_list, get_daily_basic, get_trade_cal
 
 
 def is_trading_time():
@@ -34,45 +40,84 @@ def is_trading_time():
         return bool(is_trading_day)
     except Exception as e:
         logger.error(f"❌ 查询交易日失败: {e}")
-        return False  # 安全起见返回 False
+        return False
 
 
-def fetch_stock_realtime():
-    """获取A股实时行情数据"""
-    import requests
-    
-    errors = []
-    
-    # 尝试新浪接口
+def fetch_stock_tushare():
+    """通过tushare获取实时行情"""
     try:
-        logger.info("📡 正在获取股票实时行情(新浪)...")
-        df = ak.stock_zh_a_spot()
-        logger.info(f"✅ 新浪接口获取成功，共 {len(df)} 条")
-        return df, 'sina'
-    except requests.exceptions.ConnectionError as e:
-        errors.append(f"新浪连接失败")
-        logger.warning(f"新浪接口连接失败")
+        logger.info("📡 正在获取股票实时行情(tushare)...")
+        
+        # 获取股票列表
+        stock_list = get_stock_list(limit=6000)
+        if stock_list is None or stock_list.empty:
+            return None, 'tushare'
+        
+        # 获取每日指标
+        from datetime import timedelta
+        df_cal = get_trade_cal(
+            start_date=(date.today() - timedelta(days=7)).strftime('%Y%m%d'),
+            end_date=date.today().strftime('%Y%m%d')
+        )
+        
+        if df_cal is not None and not df_cal.empty:
+            df_cal = df_cal[df_cal['is_open'] == 1]
+            if not df_cal.empty:
+                # 倒序查找
+                for trade_date in reversed(df_cal['cal_date'].tolist()):
+                    daily_data = get_daily_basic(trade_date)
+                    if not daily_data.empty:
+                        logger.info(f"✅ tushare获取成功，共 {len(daily_data)} 条 (日期: {trade_date})")
+                        return daily_data, 'tushare'
+        
+        return None, 'tushare'
+        
     except Exception as e:
-        error_msg = str(e)[:50]  # 截取前50字符
-        errors.append(f"新浪:{error_msg}")
-        logger.warning(f"新浪接口失败: {error_msg}")
+        logger.warning(f"tushare接口失败: {e}")
+        return None, 'tushare'
+
+
+def fetch_stock_akshare():
+    """通过akshare获取实时行情"""
+    import requests
     
     # 尝试东方财富接口
     try:
         logger.info("📡 正在获取股票实时行情(东方财富)...")
         df = ak.stock_zh_a_spot_em()
-        logger.info(f"✅ 东方财富接口获取成功，共 {len(df)} 条")
-        return df, 'eastmoney'
-    except requests.exceptions.ConnectionError as e:
-        errors.append(f"东财连接失败")
-        logger.warning(f"东方财富接口连接失败")
+        if df is not None and not df.empty:
+            logger.info(f"✅ 东方财富接口获取成功，共 {len(df)} 条")
+            return df, 'eastmoney'
     except Exception as e:
-        error_msg = str(e)[:50]
-        errors.append(f"东财:{error_msg}")
-        logger.warning(f"东方财富接口失败: {error_msg}")
+        logger.warning(f"东方财富接口失败: {e}")
     
-    # 都失败了，抛出简洁的错误
-    raise Exception(f"所有接口失败: {'; '.join(errors)}")
+    # 尝试新浪接口
+    try:
+        logger.info("📡 正在获取股票实时行情(新浪)...")
+        df = ak.stock_zh_a_spot()
+        if df is not None and not df.empty:
+            logger.info(f"✅ 新浪接口获取成功，共 {len(df)} 条")
+            return df, 'sina'
+    except Exception as e:
+        logger.warning(f"新浪接口失败: {e}")
+    
+    return None, 'akshare'
+
+
+def fetch_stock_realtime():
+    """获取A股实时行情数据（多数据源）"""
+    
+    # 优先尝试tushare
+    df, source = fetch_stock_tushare()
+    if df is not None and not df.empty:
+        return df, source
+    
+    # 其次尝试akshare
+    df, source = fetch_stock_akshare()
+    if df is not None and not df.empty:
+        return df, source
+    
+    raise Exception("所有接口失败")
 
 
 def convert_to_db_format(df, source, trade_date):
@@ -81,7 +126,38 @@ def convert_to_db_format(df, source, trade_date):
     
     for _, row in df.iterrows():
         try:
-            if source == 'sina':
+            if source == 'tushare':
+                # tushare数据格式
+                ts_code = row.get('ts_code', '')
+                code = ts_code.split('.')[0] if '.' in ts_code else ts_code
+                
+                record = {
+                    'stock_code': code,
+                    'stock_name': '',  # tushare daily_basic没有name
+                    'latest_price': _to_decimal(row.get('close')),
+                    'change_amount': None,
+                    'change_percent': _to_decimal(row.get('pct_chg')),
+                    'prev_close': _to_decimal(row.get('pre_close')),
+                    'open_price': None,
+                    'high': None,
+                    'low': None,
+                    'volume': _to_decimal(row.get('vol')),
+                    'turnover': _to_decimal(row.get('amount')),
+                    'turnover_rate': _to_decimal(row.get('turnover_rate')),
+                    'amplitude': None,
+                    'volume_ratio': _to_decimal(row.get('volume_ratio')),
+                    'pe_dynamic': _to_decimal(row.get('pe')),
+                    'pb_ratio': _to_decimal(row.get('pb')),
+                    'total_market_cap': _to_decimal(row.get('total_mv')),
+                    'circulating_market_cap': _to_decimal(row.get('circ_mv')),
+                    'change_speed': None,
+                    'change_5min': None,
+                    'change_60d': None,
+                    'change_ytd': None,
+                    'trade_date': trade_date,
+                    'fetch_time': datetime.now()
+                }
+            elif source == 'sina':
                 # 新浪数据格式处理
                 record = {
                     'stock_code': str(row.get('代码', '')).replace('sh', '').replace('sz', ''),
@@ -96,7 +172,7 @@ def convert_to_db_format(df, source, trade_date):
                     'volume': _to_decimal(row.get('成交量')),
                     'turnover': _to_decimal(row.get('成交额')),
                     'turnover_rate': _to_decimal(row.get('换手率')),
-                    'amplitude': None,  # 新浪没有
+                    'amplitude': None,
                     'volume_ratio': None,
                     'pe_dynamic': None,
                     'pb_ratio': None,
@@ -226,10 +302,8 @@ def sync_stock_realtime():
             
         except Exception as e:
             db.session.rollback()
-            # 只记录简洁错误，不打印完整堆栈
             error_msg = str(e)[:100]
             logger.error(f"💥 同步失败: {error_msg}")
-            # 只在DEBUG级别记录详细堆栈
             logger.debug(f"详细错误: {traceback.format_exc()}")
 
 

@@ -1,5 +1,5 @@
 """
-股票回测API - 使用真实数据 (baostock)
+股票回测API - 使用真实数据 (baostock + tushare)
 支持多种再平衡策略和交易成本计算
 """
 from flask import Blueprint, request, jsonify
@@ -7,6 +7,12 @@ from datetime import datetime, timedelta
 import math
 import baostock as bs
 import pandas as pd
+
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro, get_daily
 
 stock_backtest_bp = Blueprint('stock_backtest', __name__)
 

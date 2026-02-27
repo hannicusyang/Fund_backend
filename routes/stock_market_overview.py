@@ -9,6 +9,12 @@ import akshare as ak
 from datetime import datetime, date
 from config.logging_config import logger
 
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 stock_overview_bp = Blueprint('stock_overview', __name__)
 
 

@@ -1,4 +1,10 @@
 # routes/fund_rank.py
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 from datetime import datetime
 from config import logger
 from flask import Blueprint, request, jsonify

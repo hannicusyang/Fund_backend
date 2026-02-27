@@ -108,6 +108,8 @@ from routes.stock_factor_api import stock_factor_bp  # ← 新增多因子API
 from routes.stock_backtest import stock_backtest_bp  # 股票回测API
 from routes.stock_backtest_pro import stock_backtest_pro_bp  # 专业回测API
 from routes.stock_strategy_api import stock_strategy_bp  # 策略持久化API
+from routes.market_intelligence import market_intelligence_bp  # 市场资讯API
+
 app.register_blueprint(watchlist_bp, url_prefix='/api/watchlist')
 app.register_blueprint(fund_rank_bp, url_prefix='/api/funds')
 app.register_blueprint(holding_bp, url_prefix='/api/holding')
@@ -123,6 +125,7 @@ app.register_blueprint(fund_backtest_bp, url_prefix='/api/backtest')
 app.register_blueprint(stock_backtest_bp, url_prefix='/api/stock')  # 股票回测API
 app.register_blueprint(stock_backtest_pro_bp, url_prefix='/api/stock')  # 专业回测API
 app.register_blueprint(stock_strategy_bp, url_prefix='/api/strategy')  # 策略持久化API
+app.register_blueprint(market_intelligence_bp)  # 市场资讯API
 # ====== 路由（保持原样）======
 @app.route('/api/run-task')
 def manual_run():

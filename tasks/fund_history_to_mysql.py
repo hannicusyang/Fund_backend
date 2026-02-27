@@ -1,9 +1,33 @@
 # tasks/fund_history_to_mysql.py （优化版）
 
 import akshare as ak
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 import pandas as pd
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 import time
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 import random
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 from datetime import datetime, date, timedelta
 from config.logging_config import logger
 from models import db
@@ -11,6 +35,12 @@ from models.fund_nav_history import FundNavHistory
 from models.fund_list import FundList
 from models.fund_watchlist import FundWatchlist
 import sys
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 
 # =============== 使用 exchange_calendars 判断交易日 ===============
 try:

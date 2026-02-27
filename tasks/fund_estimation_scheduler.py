@@ -1,7 +1,25 @@
 # tasks/fund_estimation_scheduler.py
 import pandas as pd
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 import re
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 import akshare as ak
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 from datetime import datetime, date
 from config.logging_config import logger
 from models import db
@@ -10,10 +28,34 @@ from models.fund_watchlist import FundWatchlist
 from models.trading_day import TradingDay
 from models.my_fund_holding import MyFundHolding
 import math  # ← 新增：用于判断 NaN
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 from datetime import datetime, time, timedelta
 import pandas_market_calendars as mcal
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 import json  # ✅ 新增：用于 JSON 序列化
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 import time as time_module
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 
 _redis_client = None
 

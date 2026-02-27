@@ -1,4 +1,10 @@
 """
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 基金实验室 API 路由
 支持基金筛选、组合构建、回测等功能
 """

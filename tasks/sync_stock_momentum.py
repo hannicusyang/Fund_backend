@@ -1,5 +1,6 @@
 # tasks/sync_stock_momentum.py
 # 使用baostock同步股票动量因子（5日、10日、20日涨跌幅）
+# 数据源: baostock > tushare
 
 import baostock as bs
 import pandas as pd
@@ -15,6 +16,9 @@ from app import app
 from models import db
 from models.stock_screening import StockScreeningData
 from sqlalchemy import func
+
+# 导入tushare
+from utils.tushare_api import get_pro, get_daily
 
 
 def get_momentum_for_stock(stock_code, trade_date):

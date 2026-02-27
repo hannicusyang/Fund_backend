@@ -6,6 +6,12 @@ from functools import wraps
 from models import db
 from models.stock_estimation import StockEstimation
 
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro
+
 stock_realtime_bp = Blueprint('stock_realtime', __name__)
 
 # 外部API缓存

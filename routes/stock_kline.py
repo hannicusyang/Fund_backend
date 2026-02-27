@@ -5,6 +5,12 @@ import baostock as bs
 import pandas as pd
 from datetime import datetime, timedelta
 
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro, get_daily
+
 stock_kline_bp = Blueprint('stock_kline', __name__)
 
 

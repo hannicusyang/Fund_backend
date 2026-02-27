@@ -14,6 +14,9 @@ from models.stock_market_models_overview import (
 )
 from models.trading_day import TradingDay
 
+# 导入tushare
+from utils.tushare_api import get_pro, get_trade_cal, get_index_daily
+
 
 from datetime import datetime, date
 from models.trading_day import TradingDay

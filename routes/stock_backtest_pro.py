@@ -8,6 +8,12 @@ import pandas as pd
 import numpy as np
 import baostock as bs
 
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro, get_daily
+
 stock_backtest_pro_bp = Blueprint('stock_backtest_pro', __name__)
 
 # 登录 baostock

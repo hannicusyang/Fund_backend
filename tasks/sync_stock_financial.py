@@ -1,6 +1,6 @@
 # tasks/sync_stock_financial.py
 # 股票财务因子同步 - ROE、毛利率、净利率、营收增长、利润增长
-# 使用akshare获取财务指标
+# 数据源: tushare (第三方代理) > akshare
 
 import akshare as ak
 import pandas as pd
@@ -17,6 +17,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import app
 from models import db
 from models.stock_screening import StockScreeningData
+
+# 导入tushare
+from utils.tushare_api import get_pro, get_fina_indicator
 
 
 def parse_percent(value):

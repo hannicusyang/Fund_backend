@@ -2,6 +2,7 @@
 """
 股票波动率计算任务
 预先计算所有股票的年化波动率并存入数据库
+数据源: baostock > tushare
 """
 import sys
 import os
@@ -13,6 +14,9 @@ import baostock as bs
 from datetime import datetime, timedelta
 import math
 from sqlalchemy import text
+
+# 导入tushare
+from utils.tushare_api import get_pro, get_daily
 
 def calculate_stock_volatility(stock_code, days=60):
     """计算单只股票的年化波动率"""

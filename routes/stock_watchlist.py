@@ -5,6 +5,12 @@ import baostock as bs
 from datetime import datetime, timedelta
 import math
 
+# 导入tushare
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.tushare_api import get_pro, get_daily
+
 stock_watchlist_bp = Blueprint('stock_watchlist', __name__)
 
 USER_ID = 'default'  # 单用户系统
