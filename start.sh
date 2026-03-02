@@ -34,8 +34,9 @@ if [ -f "$PID_DIR/backend-$ENV.pid" ]; then
     fi
 fi
 
-# 启动后端
-nohup python3 app.py > "$LOG_DIR/backend-$ENV.log" 2>&1 &
+# 启动后端 - 使用虚拟环境
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+nohup "$SCRIPT_DIR/venv/bin/python" "$SCRIPT_DIR/app.py" > "$LOG_DIR/backend-$ENV.log" 2>&1 &
 PID=$!
 echo $PID > "$PID_DIR/backend-$ENV.pid"
 

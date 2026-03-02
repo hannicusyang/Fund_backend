@@ -494,6 +494,7 @@ def run_pro_backtest():
             continue
         
         hist_data = get_stock_historical_data(code, period)
+        
         if hist_data and len(hist_data['closes']) >= 10:
             valid_closes = [c for c in hist_data['closes'] if c and c > 0]
             if len(valid_closes) >= 10:

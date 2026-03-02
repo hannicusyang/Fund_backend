@@ -22,9 +22,48 @@ bs.login()
 
 def get_stock_historical_data(stock_code, period=60):
     """
-    获取股票历史数据 (baostock)
+    获取股票历史数据 - 优先使用tushare，备用baostock
     """
+    # 计算日期范围
+    end_date = datetime.now().strftime('%Y%m%d')
+    start_date = (datetime.now() - timedelta(days=period * 2)).strftime('%Y%m%d')
+    
+    # 优先使用tushare
     try:
+        # 转换股票代码格式
+        if stock_code.startswith('6'):
+            ts_code = f"{stock_code}.SH"
+        elif stock_code.startswith('0') or stock_code.startswith('3'):
+            ts_code = f"{stock_code}.SZ"
+        else:
+            ts_code = f"{stock_code}.SH"
+        
+        pro = get_pro()
+        df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+        
+        if df is not None and not df.empty:
+            # 按日期排序
+            df = df.sort_values('trade_date')
+            # 取最近period天
+            df = df.tail(period)
+            
+            return {
+                'dates': df['trade_date'].tolist(),
+                'closes': df['close'].tolist(),
+                'opens': df['open'].tolist(),
+                'highs': df['high'].tolist(),
+                'lows': df['low'].tolist(),
+                'volumes': df['vol'].tolist()
+            }
+    except Exception as e:
+        print(f"[Tushare] 获取 {stock_code} 数据失败: {e}")
+    
+    # 备用：使用baostock
+    try:
+        # 确保baostock已登录
+        if not bs.login():
+            bs.login()
+        
         # 判断股票市场
         if stock_code.startswith('6'):
             bs_code = f"sh.{stock_code}"
@@ -34,15 +73,15 @@ def get_stock_historical_data(stock_code, period=60):
             bs_code = f"sh.{stock_code}"
         
         # 计算日期范围
-        end_date = datetime.now().strftime('%Y-%m-%d')
-        start_date = (datetime.now() - timedelta(days=period * 2)).strftime('%Y-%m-%d')
+        end_date_str = datetime.now().strftime('%Y-%m-%d')
+        start_date_str = (datetime.now() - timedelta(days=period * 2)).strftime('%Y-%m-%d')
         
         # 获取数据
         rs = bs.query_history_k_data_plus(
             bs_code,
             "date,open,high,low,close,volume",
-            start_date=start_date,
-            end_date=end_date,
+            start_date=start_date_str,
+            end_date=end_date_str,
             frequency="d",
             adjustflag="2"  # 前复权
         )
