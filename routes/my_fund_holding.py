@@ -2,7 +2,7 @@
 import json
 
 import requests
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, g
 from models import db, FundNavHistory
 from models.my_fund_holding import MyFundHolding
 from models.fund_estimation import FundEstimation
@@ -14,6 +14,7 @@ from sqlalchemy import and_, func
 from collections import defaultdict
 import time as time_module
 from config import *
+from utils.auth import get_current_user_id_or_default
 
 
 # ✅ 新增：Redis 相关导入
@@ -24,7 +25,6 @@ except ImportError:
     redis_available = False
 
 holding_bp = Blueprint('holding', __name__)
-USER_ID = 'default'  # 单用户系统
 
 # ✅ 排序字段白名单（仅允许安全字段）
 ALLOWED_SORT_FIELDS = {
@@ -215,7 +215,7 @@ def get_holding_list():
             page = 1
 
         # 构建基础查询（只查当前用户）
-        query = MyFundHolding.query.filter_by(user_id=USER_ID)
+        query = MyFundHolding.query.filter_by(user_id=get_current_user_id_or_default())
         if query.count() == 0:
             return jsonify({
                 "success": True,
@@ -362,7 +362,7 @@ def update_holding():
 
         # 查询持仓记录
         holding = MyFundHolding.query.filter_by(
-            user_id=USER_ID,
+            user_id=get_current_user_id_or_default(),
             fund_code=fund_code
         ).first()
 
@@ -509,7 +509,7 @@ def get_portfolio_history():
     基于 fund_nav_history 的真实历史净值 + 用户当前持仓份额
     """
     try:
-        user_id = USER_ID
+        user_id = get_current_user_id_or_default()
         days = request.args.get('days', 30, type=int)
         if days < 1:
             days = 30
@@ -595,7 +595,7 @@ def fallback_calculate_portfolio_realtime():
     """
     try:
         holdings = MyFundHolding.query.filter(
-            MyFundHolding.user_id == USER_ID,
+            MyFundHolding.user_id == get_current_user_id_or_default(),
             MyFundHolding.shares > 0
         ).all()
 

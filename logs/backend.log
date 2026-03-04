@@ -1,48 +1,50 @@
-2026-02-27 16:55:17,722 - WARNING - /etc/timezone is deprecated in some distros, and no longer reliable. tzlocal is ignoring it, and you can likely delete it.
+2026-03-02 10:10:49,295 - WARNING - /etc/timezone is deprecated in some distros, and no longer reliable. tzlocal is ignoring it, and you can likely delete it.
 login success!
 login success!
  * Serving Flask app 'app'
  * Debug mode: off
-2026-02-27 16:55:18,006 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+2026-03-02 10:10:50,850 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
  * Running on all addresses (::)
  * Running on http://[::1]:5000
  * Running on http://[fd00:6868:6868:0:5054:ff:fe84:6a05]:5000
-2026-02-27 16:55:18,006 - INFO - [33mPress CTRL+C to quit[0m
-2026-02-27 16:55:19,199 - INFO - ::1 - - [27/Feb/2026 16:55:19] "GET /api/run-task HTTP/1.1" 200 -
-2026-02-27 16:55:25,161 - WARNING - 获取Tushare新闻失败: 抱歉，您没有该接口访问权限。
-2026-02-27 16:55:25,162 - INFO - 从 tushare 获取 0 条新闻
-2026-02-27 16:55:25,162 - INFO - 从 sina 获取 1 条新闻
-2026-02-27 16:55:25,452 - WARNING - 获取东方财富新闻失败: Expecting value: line 1 column 1 (char 0)
-2026-02-27 16:55:25,454 - INFO - 从 eastmoney 获取 1 条新闻
-2026-02-27 16:55:25,455 - INFO - 从 163 获取 1 条新闻
-2026-02-27 16:55:25,455 - INFO - 从 qq 获取 1 条新闻
-2026-02-27 16:55:25,456 - INFO - ::1 - - [27/Feb/2026 16:55:25] "GET /api/market/intelligence/news?limit=1 HTTP/1.1" 200 -
-2026-02-27 16:55:37,434 - INFO - ::1 - - [27/Feb/2026 16:55:37] "POST /api/stock/backtest HTTP/1.1" 200 -
-2026-02-27 16:55:44,853 - INFO - 使用缓存的新闻数据
-2026-02-27 16:55:44,854 - INFO - ::1 - - [27/Feb/2026 16:55:44] "GET /api/market/intelligence/news?limit=1 HTTP/1.1" 200 -
-2026-02-27 16:56:06,412 - INFO - 使用缓存的新闻数据
-2026-02-27 16:56:06,413 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:56:06] "GET /api/market/intelligence/news?limit=1 HTTP/1.0" 200 -
-2026-02-27 16:56:22,523 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:56:22] "GET /api/lab/screen/ranges HTTP/1.0" 200 -
-2026-02-27 16:56:22,527 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:56:22] "GET /api/watchlist/list HTTP/1.0" 200 -
-2026-02-27 16:56:22,536 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:56:22] "GET /api/holding/portfolio-history?days=30 HTTP/1.0" 200 -
-2026-02-27 16:56:22,647 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:56:22] "GET /api/holding/list HTTP/1.0" 200 -
-2026-02-27 16:56:22,683 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:56:22] "GET /api/lab/screen?page=1&page_size=20&min_rank_ratio=0&max_rank_ratio=100&min_weekly_return=-10&max_weekly_return=15&min_monthly_return=-20&max_monthly_return=30&min_yearly_return=-50&max_yearly_return=200 HTTP/1.0" 200 -
-2026-02-27 16:56:22,728 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:56:22] "GET /api/lab/screen?page=1&page_size=20 HTTP/1.0" 200 -
-2026-02-27 16:56:23,286 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:56:23] "GET /api/stock/watchlist/list HTTP/1.0" 200 -
-2026-02-27 16:56:23,336 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:56:23] "GET /api/stock/factors HTTP/1.0" 200 -
-2026-02-27 16:56:23,386 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:56:23] "GET /api/stock/quick-filters HTTP/1.0" 200 -
-2026-02-27 16:56:23,456 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:56:23] "GET /api/stock/strategies HTTP/1.0" 200 -
-2026-02-27 16:56:23,986 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:56:23] "POST /api/stock/screen HTTP/1.0" 200 -
-2026-02-27 16:56:24,323 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:56:24] "GET /api/stock/watchlist/list HTTP/1.0" 200 -
-2026-02-27 16:56:27,356 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:56:27] "POST /api/stock/pro/backtest HTTP/1.0" 200 -
-2026-02-27 16:56:58,130 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:56:58] "GET /api/lab/screen/ranges HTTP/1.0" 200 -
-2026-02-27 16:56:58,276 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:56:58] "GET /api/lab/screen?page=1&page_size=20&min_rank_ratio=0&max_rank_ratio=100&min_weekly_return=-10&max_weekly_return=15&min_monthly_return=-20&max_monthly_return=30&min_yearly_return=-50&max_yearly_return=200 HTTP/1.0" 200 -
-2026-02-27 16:57:01,734 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:57:01] "GET /api/funds/list?fund_name=&fund_code=&page=1&page_size=20&sort_field=&sort_order=asc HTTP/1.0" 200 -
-2026-02-27 16:57:02,782 - WARNING - 获取Tushare新闻失败: 抱歉，您没有该接口访问权限。
-2026-02-27 16:57:02,782 - INFO - 从 tushare 获取 0 条新闻
-2026-02-27 16:57:02,782 - INFO - 从 sina 获取 8 条新闻
-2026-02-27 16:57:03,345 - WARNING - 获取东方财富新闻失败: Expecting value: line 1 column 1 (char 0)
-2026-02-27 16:57:03,347 - INFO - 从 eastmoney 获取 8 条新闻
-2026-02-27 16:57:03,348 - INFO - 从 163 获取 6 条新闻
-2026-02-27 16:57:03,348 - INFO - 从 qq 获取 6 条新闻
-2026-02-27 16:57:03,349 - INFO - ::ffff:192.168.31.174 - - [27/Feb/2026 16:57:03] "GET /api/market/intelligence/news?channel=all&sources=&start_date=20260227&end_date=20260227&keyword=&limit=100 HTTP/1.0" 200 -
+2026-03-02 10:10:50,850 - INFO - [33mPress CTRL+C to quit[0m
+2026-03-02 10:10:51,325 - INFO - ::1 - - [02/Mar/2026 10:10:51] "POST /api/stock/pro/backtest HTTP/1.1" 200 -
+2026-03-02 10:11:11,726 - INFO - ::1 - - [02/Mar/2026 10:11:11] "POST /api/stock/pro/backtest HTTP/1.1" 200 -
+2026-03-02 10:11:49,395 - ERROR - ❌ 查询交易日失败: Working outside of application context.
+
+This typically means that you attempted to use functionality that needed
+the current application. To solve this, set up an application context
+with app.app_context(). See the documentation for more information.
+2026-03-02 10:12:06,850 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:06] "GET /api/lab/benchmark/list HTTP/1.0" 200 -
+2026-03-02 10:12:06,885 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:06] "GET /api/lab/screen/ranges HTTP/1.0" 200 -
+2026-03-02 10:12:06,885 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:06] "GET /api/lab/portfolios?user_id=default&include_items=false HTTP/1.0" 200 -
+2026-03-02 10:12:06,971 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:06] "GET /api/watchlist/list HTTP/1.0" 200 -
+2026-03-02 10:12:07,014 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:07] "GET /api/holding/portfolio-history?days=30 HTTP/1.0" 200 -
+2026-03-02 10:12:07,021 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:07] "GET /api/stock/watchlist/list HTTP/1.0" 200 -
+2026-03-02 10:12:07,089 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:07] "GET /api/stock/watchlist/list HTTP/1.0" 200 -
+2026-03-02 10:12:07,158 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:07] "GET /api/stock/factors HTTP/1.0" 200 -
+2026-03-02 10:12:07,164 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:07] "GET /api/stock/watchlist/list HTTP/1.0" 200 -
+2026-03-02 10:12:07,208 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:07] "GET /api/lab/screen?page=1&page_size=20&min_rank_ratio=0&max_rank_ratio=100&min_weekly_return=-10&max_weekly_return=20&min_monthly_return=-20&max_monthly_return=30&min_yearly_return=-50&max_yearly_return=200 HTTP/1.0" 200 -
+2026-03-02 10:12:07,222 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:07] "GET /api/stock/watchlist/list HTTP/1.0" 200 -
+2026-03-02 10:12:07,293 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:07] "GET /api/holding/list HTTP/1.0" 200 -
+2026-03-02 10:12:07,408 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:07] "GET /api/stock/quick-filters HTTP/1.0" 200 -
+2026-03-02 10:12:07,435 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:07] "GET /api/lab/screen?page=1&page_size=20 HTTP/1.0" 200 -
+2026-03-02 10:12:07,488 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:07] "GET /api/holding/list HTTP/1.0" 200 -
+2026-03-02 10:12:07,543 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:07] "GET /api/stock/strategies HTTP/1.0" 200 -
+2026-03-02 10:12:07,657 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:07] "GET /api/lab/analysis/metrics/011452,018957,022365 HTTP/1.0" 200 -
+2026-03-02 10:12:08,128 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:08] "POST /api/stock/screen HTTP/1.0" 200 -
+2026-03-02 10:12:08,302 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:08] "GET /api/stock/kline/indicators/002519?period=daily HTTP/1.0" 200 -
+2026-03-02 10:12:12,031 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:12] "POST /api/stock/pro/backtest HTTP/1.0" 200 -
+2026-03-02 10:12:14,280 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:14] "POST /api/stock/pro/backtest HTTP/1.0" 200 -
+2026-03-02 10:12:23,956 - INFO - ::ffff:192.168.31.174 - - [02/Mar/2026 10:12:23] "POST /api/stock/pro/backtest HTTP/1.0" 200 -
+2026-03-02 10:12:49,302 - ERROR - ❌ 查询交易日失败: Working outside of application context.
+
+This typically means that you attempted to use functionality that needed
+the current application. To solve this, set up an application context
+with app.app_context(). See the documentation for more information.
+2026-03-02 10:12:49,362 - ERROR - ❌ 查询交易日失败: Working outside of application context.
+
+This typically means that you attempted to use functionality that needed
+the current application. To solve this, set up an application context
+with app.app_context(). See the documentation for more information.
+2026-03-02 10:13:34,623 - INFO - ::1 - - [02/Mar/2026 10:13:34] "POST /api/stock/pro/backtest HTTP/1.1" 200 -

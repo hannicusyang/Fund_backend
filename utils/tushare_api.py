@@ -33,25 +33,61 @@ def get_stock_list(limit=6000):
     return df
 
 
-def get_daily_basic(trade_date, limit=5000):
-    """获取每日指标数据（PE、PB等）"""
+def get_daily_basic_full(trade_date, limit=6000):
+    """获取每日指标数据（包含涨跌幅和行情）- 完整版"""
     pro = get_pro()
     all_data = []
     
+    # 获取每日指标数据
     for offset in range(0, limit, 1000):
         try:
             df = pro.daily_basic(trade_date=trade_date, limit=1000, offset=offset)
             if df is None or df.empty:
                 break
             all_data.append(df)
-            time.sleep(0.2)
+            time.sleep(0.15)
         except Exception as e:
             logger.warning(f"获取daily_basic失败 (offset={offset}): {e}")
             break
     
-    if all_data:
-        return pd.concat(all_data, ignore_index=True)
-    return pd.DataFrame()
+    if not all_data:
+        return pd.DataFrame()
+    
+    result = pd.concat(all_data, ignore_index=True)
+    logger.info(f"daily_basic获取 {len(result)} 条")
+    
+    # 获取涨跌幅和行情数据（从daily接口）
+    try:
+        ts_codes = result['ts_code'].tolist()
+        daily_data = []
+        
+        # 批量获取daily，每次50只
+        for i in range(0, min(len(ts_codes), 5000), 50):
+            batch = ts_codes[i:i+50]
+            try:
+                df_daily = pro.daily(ts_code=','.join(batch), start_date=trade_date, end_date=trade_date)
+                if df_daily is not None and not df_daily.empty:
+                    daily_data.append(df_daily)
+                time.sleep(0.1)
+            except:
+                pass
+        
+        if daily_data:
+            daily_df = pd.concat(daily_data, ignore_index=True)
+            # 合并需要的字段（包含change涨跌额）
+            merge_cols = ['ts_code', 'open', 'high', 'low', 'pre_close', 'vol', 'amount', 'pct_chg', 'change']
+            exist_cols = [c for c in merge_cols if c in daily_df.columns]
+            if exist_cols:
+                result = result.merge(daily_df[exist_cols], on='ts_code', how='left')
+                logger.info(f"合并daily数据后共 {len(result)} 条")
+    except Exception as e:
+        logger.warning(f"获取daily数据失败: {e}")
+    
+    return result
+
+
+# 兼容旧版本
+get_daily_basic = get_daily_basic_full
 
 
 def get_daily(ts_code, start_date, end_date):

@@ -8,7 +8,7 @@ from utils.tushare_api import get_pro
 基金实验室 API 路由
 支持基金筛选、组合构建、回测等功能
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from models import db
 from models.fund_open_rank import FundOpenRankAll
 from models.fund_list import FundList
@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 from sqlalchemy import func
+from utils.auth import get_current_user_id_or_default
 
 # 导入回测引擎
 from routes.fund_backtest import BacktestEngine
@@ -46,14 +47,36 @@ def get_screen_ranges():
             func.max(FundOpenRankAll.weekly_growth_rate).label('max_weekly'),
             func.min(FundOpenRankAll.monthly_1_growth_rate).label('min_monthly'),
             func.max(FundOpenRankAll.monthly_1_growth_rate).label('max_monthly'),
+            func.min(FundOpenRankAll.monthly_3_growth_rate).label('min_monthly_3'),
+            func.max(FundOpenRankAll.monthly_3_growth_rate).label('max_monthly_3'),
+            func.min(FundOpenRankAll.monthly_6_growth_rate).label('min_monthly_6'),
+            func.max(FundOpenRankAll.monthly_6_growth_rate).label('max_monthly_6'),
             func.min(FundOpenRankAll.yearly_1_growth_rate).label('min_yearly'),
             func.max(FundOpenRankAll.yearly_1_growth_rate).label('max_yearly'),
+            func.min(FundOpenRankAll.yearly_2_growth_rate).label('min_yearly_2'),
+            func.max(FundOpenRankAll.yearly_2_growth_rate).label('max_yearly_2'),
+            func.min(FundOpenRankAll.yearly_3_growth_rate).label('min_yearly_3'),
+            func.max(FundOpenRankAll.yearly_3_growth_rate).label('max_yearly_3'),
+            func.min(FundOpenRankAll.since_inception_growth_rate).label('min_inception'),
+            func.max(FundOpenRankAll.since_inception_growth_rate).label('max_inception'),
+            func.min(FundOpenRankAll.fee_rate).label('min_fee'),
+            func.max(FundOpenRankAll.fee_rate).label('max_fee'),
             func.count(FundOpenRankAll.id).label('total_count')
         ).first()
+
+        # 获取FundList的统计 (仅统计有值的记录)
+        fund_list_stats = db.session.query(
+            func.min(FundList.min_amount).label('min_min_amount'),
+            func.max(FundList.min_amount).label('max_min_amount')
+        ).filter(FundList.min_amount.isnot(None)).first()
 
         # 处理None值，设置合理的默认值
         def safe_value(val, default):
             return float(val) if val is not None else default
+
+        # 检查是否有真实数据
+        def has_real_data(val):
+            return val is not None
 
         # 向上/向下取整到合适的步长
         def round_range(min_val, max_val, step=10):
@@ -74,11 +97,50 @@ def get_screen_ranges():
             step=10
         )
 
+        monthly_3_min, monthly_3_max = round_range(
+            safe_value(stats.min_monthly_3, -50),
+            safe_value(stats.max_monthly_3, 150),
+            step=20
+        )
+
+        monthly_6_min, monthly_6_max = round_range(
+            safe_value(stats.min_monthly_6, -50),
+            safe_value(stats.max_monthly_6, 200),
+            step=20
+        )
+
         yearly_min, yearly_max = round_range(
             safe_value(stats.min_yearly, -50),
             safe_value(stats.max_yearly, 200),
             step=50
         )
+
+        yearly_2_min, yearly_2_max = round_range(
+            safe_value(stats.min_yearly_2, -50),
+            safe_value(stats.max_yearly_2, 300),
+            step=50
+        )
+
+        yearly_3_min, yearly_3_max = round_range(
+            safe_value(stats.min_yearly_3, -50),
+            safe_value(stats.max_yearly_3, 400),
+            step=50
+        )
+
+        inception_min, inception_max = round_range(
+            safe_value(stats.min_inception, -50),
+            safe_value(stats.max_inception, 500),
+            step=100
+        )
+
+        fee_min, fee_max = round_range(
+            safe_value(stats.min_fee, 0),
+            safe_value(stats.max_fee, 5),
+            step=0.5
+        )
+
+        min_amount_min = safe_value(fund_list_stats.min_min_amount, 1) if fund_list_stats else 1
+        min_amount_max = safe_value(fund_list_stats.max_min_amount, 1000) if fund_list_stats else 1000
 
         return jsonify({
             "success": True,
@@ -95,11 +157,47 @@ def get_screen_ranges():
                     "default_min": monthly_min,
                     "default_max": monthly_max
                 },
+                "monthly_3": {
+                    "min": monthly_3_min,
+                    "max": monthly_3_max,
+                    "default_min": monthly_3_min,
+                    "default_max": monthly_3_max
+                },
+                "monthly_6": {
+                    "min": monthly_6_min,
+                    "max": monthly_6_max,
+                    "default_min": monthly_6_min,
+                    "default_max": monthly_6_max
+                },
                 "yearly": {
                     "min": yearly_min,
                     "max": yearly_max,
                     "default_min": yearly_min,
                     "default_max": yearly_max
+                },
+                "yearly_2": {
+                    "min": yearly_2_min,
+                    "max": yearly_2_max,
+                    "default_min": yearly_2_min,
+                    "default_max": yearly_2_max
+                },
+                "yearly_3": {
+                    "min": yearly_3_min,
+                    "max": yearly_3_max,
+                    "default_min": yearly_3_min,
+                    "default_max": yearly_3_max
+                },
+                "inception": {
+                    "min": inception_min,
+                    "max": inception_max,
+                    "default_min": inception_min,
+                    "default_max": inception_max
+                },
+                "fee_rate": {
+                    "min": fee_min,
+                    "max": fee_max,
+                    "default_min": fee_min,
+                    "default_max": fee_max
                 },
                 "rankRatio": {
                     "min": 0,
@@ -132,8 +230,23 @@ def screen_funds():
         max_yearly_return (float): 最大年化收益
         min_weekly_return (float): 最小周涨幅
         max_weekly_return (float): 最大周涨幅
-        min_monthly_return (float): 最小月涨幅
+        min_monthly_return (float): 最小月涨幅 (近1月)
         max_monthly_return (float): 最大月涨幅
+        min_monthly_3_return (float): 最小近3月涨幅
+        max_monthly_3_return (float): 最大近3月涨幅
+        min_monthly_6_return (float): 最小近6月涨幅
+        max_monthly_6_return (float): 最大近6月涨幅
+        min_yearly_2_return (float): 最小近2年涨幅
+        max_yearly_2_return (float): 最大近2年涨幅
+        min_yearly_3_return (float): 最小近3年涨幅
+        max_yearly_3_return (float): 最大近3年涨幅
+        min_inception_return (float): 最小成立以来涨幅
+        max_inception_return (float): 最大成立以来涨幅
+        min_fee_rate (float): 最小费率(%)
+        max_fee_rate (float): 最大费率(%)
+        min_min_amount (float): 最小起购金额
+        max_min_amount (float): 最大起购金额
+        fund_status (str): 基金状态(开放/暂停/清算)
         page (int): 页码，默认 1
         page_size (int): 每页数量，默认 20
 
@@ -214,6 +327,69 @@ def screen_funds():
         if max_monthly is not None:
             query = query.filter(FundOpenRankAll.monthly_1_growth_rate <= max_monthly)
 
+        # 近3月收益率筛选
+        min_monthly_3 = request.args.get('min_monthly_3_return', type=float)
+        max_monthly_3 = request.args.get('max_monthly_3_return', type=float)
+        if min_monthly_3 is not None:
+            query = query.filter(FundOpenRankAll.monthly_3_growth_rate >= min_monthly_3)
+        if max_monthly_3 is not None:
+            query = query.filter(FundOpenRankAll.monthly_3_growth_rate <= max_monthly_3)
+
+        # 近6月收益率筛选
+        min_monthly_6 = request.args.get('min_monthly_6_return', type=float)
+        max_monthly_6 = request.args.get('max_monthly_6_return', type=float)
+        if min_monthly_6 is not None:
+            query = query.filter(FundOpenRankAll.monthly_6_growth_rate >= min_monthly_6)
+        if max_monthly_6 is not None:
+            query = query.filter(FundOpenRankAll.monthly_6_growth_rate <= max_monthly_6)
+
+        # 近2年收益率筛选
+        min_yearly_2 = request.args.get('min_yearly_2_return', type=float)
+        max_yearly_2 = request.args.get('max_yearly_2_return', type=float)
+        if min_yearly_2 is not None:
+            query = query.filter(FundOpenRankAll.yearly_2_growth_rate >= min_yearly_2)
+        if max_yearly_2 is not None:
+            query = query.filter(FundOpenRankAll.yearly_2_growth_rate <= max_yearly_2)
+
+        # 近3年收益率筛选
+        min_yearly_3 = request.args.get('min_yearly_3_return', type=float)
+        max_yearly_3 = request.args.get('max_yearly_3_return', type=float)
+        if min_yearly_3 is not None:
+            query = query.filter(FundOpenRankAll.yearly_3_growth_rate >= min_yearly_3)
+        if max_yearly_3 is not None:
+            query = query.filter(FundOpenRankAll.yearly_3_growth_rate <= max_yearly_3)
+
+        # 成立以来收益率筛选
+        min_inception = request.args.get('min_inception_return', type=float)
+        max_inception = request.args.get('max_inception_return', type=float)
+        if min_inception is not None:
+            query = query.filter(FundOpenRankAll.since_inception_growth_rate >= min_inception)
+        if max_inception is not None:
+            query = query.filter(FundOpenRankAll.since_inception_growth_rate <= max_inception)
+
+        # 费率筛选
+        min_fee_rate = request.args.get('min_fee_rate', type=float)
+        max_fee_rate = request.args.get('max_fee_rate', type=float)
+        if min_fee_rate is not None:
+            query = query.filter(FundOpenRankAll.fee_rate >= min_fee_rate)
+        if max_fee_rate is not None:
+            query = query.filter(FundOpenRankAll.fee_rate <= max_fee_rate)
+
+        # 起购金额筛选 (需要关联FundList)
+        min_min_amount = request.args.get('min_min_amount', type=float)
+        max_min_amount = request.args.get('max_min_amount', type=float)
+        fund_status = request.args.get('fund_status', '').strip()
+
+        if min_min_amount is not None or max_min_amount is not None or fund_status:
+            # 需要join FundList
+            query = query.join(FundList, FundOpenRankAll.fund_code == FundList.fund_code)
+            if min_min_amount is not None:
+                query = query.filter(FundList.min_amount >= min_min_amount)
+            if max_min_amount is not None:
+                query = query.filter(FundList.min_amount <= max_min_amount)
+            if fund_status:
+                query = query.filter(FundList.fund_status == fund_status)
+
         # 默认按排名排序
         query = query.order_by(
             db.case((FundOpenRankAll.rank.isnot(None), FundOpenRankAll.rank), else_=999999),
@@ -229,13 +405,26 @@ def screen_funds():
             # 计算排名比例
             rank_ratio = round((fund.rank / total_count) * 100, 2) if total_count > 0 and fund.rank else None
 
-            items.append({
+            # 判断是否有FundList关联数据
+            fund_type = getattr(fund, 'fund_type', None) or getattr(fund, 'FundList', None) if hasattr(fund, 'FundList') else None
+            min_amount = getattr(fund, 'min_amount', None) if hasattr(fund, 'min_amount') else None
+            fund_status = getattr(fund, 'fund_status', None) if hasattr(fund, 'fund_status') else None
+
+            # 如果没有通过join获取，尝试单独查询
+            if min_amount is None and fund_status is None:
+                fund_info = FundList.query.filter_by(fund_code=fund.fund_code).first()
+                if fund_info:
+                    min_amount = fund_info.min_amount
+                    fund_status = fund_info.fund_status
+                    fund_type = fund_info.fund_type
+
+            item = {
                 "id": fund.id,
                 "rank": fund.rank,
                 "rank_ratio": rank_ratio,
                 "fund_code": fund.fund_code,
                 "fund_name": fund.fund_name,
-                "fund_type": fund.fund_type if hasattr(fund, 'fund_type') else None,
+                "fund_type": fund_type,
                 "date": fund.date,
                 "net_value": fund.net_value,
                 "accumulated_net_value": fund.accumulated_net_value,
@@ -251,7 +440,15 @@ def screen_funds():
                 "since_inception_growth_rate": fund.since_inception_growth_rate,
                 "fee_rate": fund.fee_rate,
                 "update_time": fund.update_time.isoformat() if fund.update_time else None
-            })
+            }
+
+            # 添加FundList扩展字段
+            if min_amount is not None:
+                item["min_amount"] = min_amount
+            if fund_status is not None:
+                item["fund_status"] = fund_status
+
+            items.append(item)
 
         return jsonify({
             "success": True,
@@ -1746,7 +1943,7 @@ def get_portfolio_list():
     try:
         from models.fund_portfolio import FundPortfolio, FundPortfolioItem
         
-        user_id = request.args.get('user_id', 'default')
+        user_id = get_current_user_id_or_default()
         include_items = request.args.get('include_items', 'true').lower() == 'true'
         
         portfolios = FundPortfolio.query.filter_by(
@@ -1912,7 +2109,7 @@ def create_portfolio():
         from models.fund_portfolio import FundPortfolio, FundPortfolioItem
         
         data = request.get_json()
-        user_id = data.get('user_id', 'default')
+        user_id = get_current_user_id_or_default()
         
         # 创建组合
         portfolio = FundPortfolio(

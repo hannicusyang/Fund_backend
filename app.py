@@ -12,6 +12,7 @@ from flask_cors import CORS
 from routes.my_fund_holding import holding_bp
 from routes.fund_lab import fund_lab_bp
 from routes.fund_backtest import fund_backtest_bp
+from routes.auth import auth_bp  # 用户认证
 # ====== 您的任务模块（先不导入 sync_fund_holdings_quarterly）======
 from tasks.fund_basic_sync import sync_fund_basic_info
 from tasks.fund_estimation_scheduler import fetch_and_save_fund_estimation
@@ -122,6 +123,7 @@ app.register_blueprint(stock_screening_bp)  # 多因子选股API
 app.register_blueprint(stock_kline_bp, url_prefix='/api/stock')  # K线数据API
 app.register_blueprint(fund_lab_bp, url_prefix='/api/lab')
 app.register_blueprint(fund_backtest_bp, url_prefix='/api/backtest')
+app.register_blueprint(auth_bp)  # 用户认证API
 app.register_blueprint(stock_backtest_bp, url_prefix='/api/stock')  # 股票回测API
 app.register_blueprint(stock_backtest_pro_bp, url_prefix='/api/stock')  # 专业回测API
 app.register_blueprint(stock_strategy_bp, url_prefix='/api/strategy')  # 策略持久化API

@@ -10,18 +10,9 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.tushare_api import get_pro, get_daily
+from utils.auth import get_current_user_id_or_default
 
 stock_watchlist_bp = Blueprint('stock_watchlist', __name__)
-
-USER_ID = 'default'  # 单用户系统
-
-
-from flask import Blueprint, jsonify, request
-from models import db, StockWatchlist
-from models.stock_screening import StockScreeningData
-import baostock as bs
-from datetime import datetime, timedelta
-import math
 
 # 简单的缓存机制
 _volatility_cache = {}
@@ -108,6 +99,8 @@ def calculate_volatility(stock_code, days=20):
 
 @stock_watchlist_bp.route('/add', methods=['POST'])
 def add_to_watchlist():
+    user_id = get_current_user_id_or_default()
+    user_id = get_current_user_id_or_default()
     """添加股票到自选清单"""
     data = request.get_json()
     stock_code = data.get('stock_code')
@@ -117,13 +110,13 @@ def add_to_watchlist():
         return jsonify({"success": False, "message": "缺少 stock_code"}), 400
 
     # 检查是否已关注
-    existing = StockWatchlist.query.filter_by(user_id=USER_ID, stock_code=stock_code).first()
+    existing = StockWatchlist.query.filter_by(user_id=user_id, stock_code=stock_code).first()
     if existing:
         return jsonify({"success": True, "message": "已在自选清单中"}), 200
 
     # 添加到自选清单
     watch_item = StockWatchlist(
-        user_id=USER_ID,
+        user_id=user_id,
         stock_code=stock_code,
         stock_name=stock_name
     )
@@ -135,12 +128,13 @@ def add_to_watchlist():
 
 @stock_watchlist_bp.route('/remove/<stock_code>', methods=['DELETE'])
 def remove_from_watchlist(stock_code):
+    user_id = get_current_user_id_or_default()
     """从自选清单移除"""
     if not stock_code:
         return jsonify({"success": False, "message": "缺少 stock_code"}), 400
 
     # 查找自选记录
-    watch_item = StockWatchlist.query.filter_by(user_id=USER_ID, stock_code=stock_code).first()
+    watch_item = StockWatchlist.query.filter_by(user_id=user_id, stock_code=stock_code).first()
     if watch_item:
         # 删除自选记录
         db.session.delete(watch_item)
@@ -153,8 +147,9 @@ def remove_from_watchlist(stock_code):
 
 @stock_watchlist_bp.route('/list', methods=['GET'])
 def get_watchlist():
+    user_id = get_current_user_id_or_default()
     """获取自选清单（含实时价格和风险数据）"""
-    items = StockWatchlist.query.filter_by(user_id=USER_ID) \
+    items = StockWatchlist.query.filter_by(user_id=user_id) \
         .order_by(StockWatchlist.added_at.desc()) \
         .all()
 
@@ -205,9 +200,10 @@ def get_watchlist():
 
 @stock_watchlist_bp.route('/check/<stock_code>', methods=['GET'])
 def check_in_watchlist(stock_code):
+    user_id = get_current_user_id_or_default()
     """检查是否在自选清单中"""
     exists = StockWatchlist.query.filter_by(
-        user_id=USER_ID,
+        user_id=user_id,
         stock_code=stock_code
     ).first() is not None
 

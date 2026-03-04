@@ -2,6 +2,7 @@
 # 多因子选股API
 
 from flask import Blueprint, request, jsonify
+from utils.auth import get_current_user_id_or_default
 from services.stock_factor_service import StockFactorService
 import time
 
@@ -99,7 +100,7 @@ def screen_stocks():
 def get_strategies():
     """获取用户的筛选策略列表"""
     try:
-        user_id = request.args.get('userId', 'default')
+        user_id = get_current_user_id_or_default()
         strategies = StockFactorService.get_strategies(user_id)
         return success_response(strategies)
     except Exception as e:
@@ -112,7 +113,7 @@ def save_strategy():
     try:
         data = request.json or {}
         
-        user_id = data.get('userId', 'default')
+        user_id = get_current_user_id_or_default()
         name = data.get('name')
         description = data.get('description', '')
         factors = data.get('factors', {})
@@ -146,7 +147,7 @@ def save_strategy():
 def delete_strategy(strategy_id):
     """删除策略"""
     try:
-        user_id = request.args.get('userId', 'default')
+        user_id = get_current_user_id_or_default()
         result = StockFactorService.delete_strategy(strategy_id, user_id)
         
         if result['success']:

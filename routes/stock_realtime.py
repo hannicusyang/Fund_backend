@@ -335,13 +335,45 @@ def _parse_float(value):
 def get_stock_data():
     """
     获取股票数据的完整逻辑：
-    直接从筛选数据表获取最完整的数据
+    优先从筛选数据表获取，否则从实时行情表获取
     """
-    # 直接获取最完整的数据
-    print("[数据源] 获取最完整的股票数据...")
+    # 优先从筛选数据获取
+    print("[数据源] 尝试从筛选数据表获取...")
     yesterday_result = get_data_from_yesterday()
     if yesterday_result:
         return yesterday_result[0], yesterday_result[1], 'screening_db'
+    
+    # 如果筛选数据表没有，从实时行情表获取
+    print("[数据源] 筛选数据表无数据，尝试从实时行情表获取...")
+    from models.stock_estimation import StockEstimation
+    try:
+        records = StockEstimation.query.order_by(StockEstimation.fetch_time.desc()).limit(6000).all()
+        if records:
+            result = []
+            for r in records:
+                result.append({
+                    'code': r.stock_code,
+                    'name': r.stock_name,
+                    'latest_price': float(r.latest_price) if r.latest_price is not None else None,
+                    'change_percent': float(r.change_percent) if r.change_percent is not None else None,
+                    'change_amount': float(r.change_amount) if r.change_amount is not None else None,
+                    'open': float(r.open_price) if r.open_price is not None else None,
+                    'high': float(r.high) if r.high is not None else None,
+                    'low': float(r.low) if r.low is not None else None,
+                    'volume': float(r.volume) if r.volume is not None else None,
+                    'turnover': float(r.turnover) if r.turnover is not None else None,
+                    'turnover_rate': float(r.turnover_rate) if r.turnover_rate is not None else None,
+                    'pre_close': float(r.prev_close) if r.prev_close is not None else None,
+                    'trade_date': str(r.trade_date) if r.trade_date else None,
+                    'fetch_time': str(r.fetch_time) if r.fetch_time else None,
+                    'pe_dynamic': float(r.pe_dynamic) if r.pe_dynamic is not None else None,
+                    'total_market_cap': float(r.total_market_cap) if r.total_market_cap is not None else None,
+                    'pb': float(r.pb_ratio) if r.pb_ratio is not None else None
+                })
+            print(f"[实时行情] 获取 {len(result)} 条数据")
+            return result, 'realtime_db', 'realtime_db'
+    except Exception as e:
+        print(f"[实时行情] 查询失败: {e}")
     
     raise Exception("无法获取股票数据")
 

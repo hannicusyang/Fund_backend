@@ -2,6 +2,7 @@
 # 股票策略持久化API
 
 from flask import Blueprint, request, jsonify
+from utils.auth import get_current_user_id_or_default
 from datetime import datetime
 from models import db
 from models.stock_strategy import PortfolioConfig, BacktestTemplate, BacktestReport
@@ -15,7 +16,7 @@ stock_strategy_bp = Blueprint('stock_strategy', __name__)
 @stock_strategy_bp.route('/portfolio/configs', methods=['GET'])
 def get_portfolio_configs():
     """获取用户的组合配置列表"""
-    user_id = request.args.get('user_id', 'default')
+    user_id = get_current_user_id_or_default()
     
     configs = PortfolioConfig.query.filter_by(user_id=user_id).order_by(
         PortfolioConfig.update_time.desc()
@@ -32,7 +33,7 @@ def save_portfolio_config():
     """保存组合配置"""
     data = request.get_json() or {}
     
-    user_id = data.get('user_id', 'default')
+    user_id = get_current_user_id_or_default()
     config_id = data.get('id')
     
     # 检查同名配置
@@ -90,7 +91,7 @@ def delete_portfolio_config(config_id):
 @stock_strategy_bp.route('/portfolio/configs/<int:config_id>/default', methods=['POST'])
 def set_default_portfolio(config_id):
     """设为默认组合"""
-    user_id = request.json.get('user_id', 'default')
+    user_id = get_current_user_id_or_default()
     
     # 取消其他默认
     PortfolioConfig.query.filter_by(user_id=user_id, is_default=True).update(
@@ -109,7 +110,7 @@ def set_default_portfolio(config_id):
 @stock_strategy_bp.route('/portfolio/configs/default', methods=['GET'])
 def get_default_portfolio():
     """获取默认组合配置"""
-    user_id = request.args.get('user_id', 'default')
+    user_id = get_current_user_id_or_default()
     
     config = PortfolioConfig.query.filter_by(
         user_id=user_id, is_default=True
@@ -132,7 +133,7 @@ def get_default_portfolio():
 @stock_strategy_bp.route('/backtest/templates', methods=['GET'])
 def get_backtest_templates():
     """获取回测模板列表"""
-    user_id = request.args.get('user_id', 'default')
+    user_id = get_current_user_id_or_default()
     
     templates = BacktestTemplate.query.filter_by(user_id=user_id).order_by(
         BacktestTemplate.create_time.desc()
@@ -148,7 +149,7 @@ def get_backtest_templates():
 def save_backtest_template():
     """保存回测模板"""
     data = request.get_json() or {}
-    user_id = data.get('user_id', 'default')
+    user_id = get_current_user_id_or_default()
     template_id = data.get('id')
     
     params = data.get('params', {})
@@ -254,7 +255,7 @@ def get_preset_templates():
 @stock_strategy_bp.route('/screening/strategies', methods=['GET'])
 def get_screening_strategies():
     """获取筛选策略列表"""
-    user_id = request.args.get('user_id', 'default')
+    user_id = get_current_user_id_or_default()
     
     strategies = ScreeningStrategy.query.filter_by(user_id=user_id).order_by(
         ScreeningStrategy.update_time.desc()
@@ -270,7 +271,7 @@ def get_screening_strategies():
 def save_screening_strategy():
     """保存筛选策略"""
     data = request.get_json() or {}
-    user_id = data.get('user_id', 'default')
+    user_id = get_current_user_id_or_default()
     strategy_id = data.get('id')
     
     if strategy_id:
@@ -317,7 +318,7 @@ def save_backtest_report():
     data = request.get_json() or {}
     
     report = BacktestReport(
-        user_id=data.get('user_id', 'default'),
+        user_id=get_current_user_id_or_default(),
         portfolio_id=data.get('portfolioId'),
         template_id=data.get('templateId'),
         backtest_params=data.get('params'),
@@ -348,7 +349,7 @@ def save_backtest_report():
 @stock_strategy_bp.route('/backtest/reports', methods=['GET'])
 def get_backtest_reports():
     """获取回测报告列表"""
-    user_id = request.args.get('user_id', 'default')
+    user_id = get_current_user_id_or_default()
     portfolio_id = request.args.get('portfolio_id')
     
     query = BacktestReport.query.filter_by(user_id=user_id)

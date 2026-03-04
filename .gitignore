@@ -8,3 +8,19 @@ __pycache__/
 # Virtual environment
 venv/
 .venv/
+# Logs
+logs/
+*.log
+
+# Cache
+cache/
+
+# Runtime
+pids/
+*.pid
+
+# IDE
+.idea/
+
+# OS
+.DS_Store
