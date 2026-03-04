@@ -13,6 +13,8 @@ from routes.my_fund_holding import holding_bp
 from routes.fund_lab import fund_lab_bp
 from routes.fund_backtest import fund_backtest_bp
 from routes.auth import auth_bp  # 用户认证
+from routes.monitor import monitor_bp  # 资讯监控
+from routes.manual_monitor import manual_bp  # 手动添加监控
 # ====== 您的任务模块（先不导入 sync_fund_holdings_quarterly）======
 from tasks.fund_basic_sync import sync_fund_basic_info
 from tasks.fund_estimation_scheduler import fetch_and_save_fund_estimation
@@ -128,6 +130,8 @@ app.register_blueprint(stock_backtest_bp, url_prefix='/api/stock')  # 股票回�
 app.register_blueprint(stock_backtest_pro_bp, url_prefix='/api/stock')  # 专业回测API
 app.register_blueprint(stock_strategy_bp, url_prefix='/api/strategy')  # 策略持久化API
 app.register_blueprint(market_intelligence_bp)  # 市场资讯API
+app.register_blueprint(monitor_bp, url_prefix='/api/monitor')  # 资讯监控API
+app.register_blueprint(manual_bp, url_prefix='/api/manual')  # 手动添加API
 # ====== 路由（保持原样）======
 @app.route('/api/run-task')
 def manual_run():
