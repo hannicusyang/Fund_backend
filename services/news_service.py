@@ -10,6 +10,50 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from config.logging_config import logger
 
+
+def clean_html_content(html_content: str) -> str:
+    """清洗HTML标签，转换为纯文本"""
+    if not html_content:
+        return ''
+    
+    # 移除风险提示和免责声明
+    html_content = re.sub(r'<div[^>]*style=["\']?color:\s*#666[^>]*>.*?风险提示.*?</div>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+    html_content = re.sub(r'<div[^>]*style=["\']?font-size:\s*12px[^>]*>.*?市场有风险.*?</div>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+    html_content = re.sub(r'<div[^>]*>.*?免责条款.*?</div>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+    
+    # 移除HTML注释
+    html_content = re.sub(r'<!--.*?-->', '', html_content, flags=re.DOTALL)
+    
+    # 将常见的HTML标签替换为换行
+    html_content = re.sub(r'</?p[^>]*>', '\n', html_content, flags=re.IGNORECASE)
+    html_content = re.sub(r'</?h[1-6][^>]*>', '\n', html_content, flags=re.IGNORECASE)
+    html_content = re.sub(r'</?div[^>]*>', '\n', html_content, flags=re.IGNORECASE)
+    html_content = re.sub(r'</?br\s*/?>', '\n', html_content, flags=re.IGNORECASE)
+    html_content = re.sub(r'</?li[^>]*>', '\n', html_content, flags=re.IGNORECASE)
+    html_content = re.sub(r'</?tr[^>]*>', '\n', html_content, flags=re.IGNORECASE)
+    html_content = re.sub(r'</?td[^>]*>', '\t', html_content, flags=re.IGNORECASE)
+    
+    # 处理链接，保留文本但移除标签
+    html_content = re.sub(r'<a[^>]*>([^<]*)</a>', r'\1', html_content, flags=re.IGNORECASE)
+    
+    # 移除所有剩余的HTML标签
+    html_content = re.sub(r'<[^>]+>', '', html_content)
+    
+    # 解码HTML实体
+    html_content = html_content.replace('&nbsp;', ' ')
+    html_content = html_content.replace('&amp;', '&')
+    html_content = html_content.replace('&lt;', '<')
+    html_content = html_content.replace('&gt;', '>')
+    html_content = html_content.replace('&quot;', '"')
+    html_content = html_content.replace('&#39;', "'")
+    
+    # 清理多余的空白字符
+    html_content = re.sub(r'[ \t]+', ' ', html_content)
+    html_content = re.sub(r'\n\s*\n', '\n', html_content)
+    html_content = html_content.strip()
+    
+    return html_content
+
 # 缓存类
 class NewsCache:
     def __init__(self, ttl_seconds: int = 300):
@@ -655,7 +699,7 @@ class BloombergNewsSource(NewsSource):
                         continue
                     
                     desc_elem = item.find('description')
-                    content_text = desc_elem.text[:200] if desc_elem is not None and desc_elem.text else ''
+                    content_text = desc_elem.text if desc_elem is not None and desc_elem.text else ''
                     
                     news_list.append({
                         'id': f"bloomberg_{hash(title) % 100000}",
@@ -1063,15 +1107,232 @@ class PengpaiNewsSource(NewsSource):
         return []
 
 
+# 东方财富多板块新闻源
+class EastMoneyMultiNewsSource(NewsSource):
+    """东方财富多板块新闻 - 获取8个板块的新闻"""
+    name = "eastmoney_multi"
+    
+    # 板块ID映射
+    CHANNELS = [
+        (102, '要闻'),
+        (103, '市场'),
+        (104, '产经'),
+        (105, '全球'),
+        (106, '港股'),
+        (107, '美股'),
+        (108, '期货'),
+        (109, '外汇'),
+    ]
+    
+    def fetch(self, limit: int = 50, keyword: str = "",
+              start_date: str = "", end_date: str = "") -> List[Dict]:
+        news_list = []
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (.0; WinWindows NT 1064; x64) AppleWebKit/537.36',
+            'Referer': 'https://stock.eastmoney.com/',
+        }
+        
+        # 获取所有板块的新闻
+        for channel_id, channel_name in self.CHANNELS:
+            try:
+                url = f'https://newsapi.eastmoney.com/kuaixun/v1/getlist_{channel_id}_ajaxResult_50_1_.html'
+                response = requests.get(url, headers=headers, timeout=10)
+                
+                if response.status_code == 200:
+                    text = response.text
+                    match = re.search(r'\{.*\}', text, re.DOTALL)
+                    if match:
+                        data = json.loads(match.group())
+                        
+                        for idx, item in enumerate(data.get('LivesList', [])):
+                            title = item.get('title', '')
+                            if keyword and keyword.lower() not in title.lower():
+                                continue
+                            
+                            news_list.append({
+                                'id': f"em_{channel_id}_{item.get('id', idx)}",
+                                'title': title,
+                                'content': item.get('digest', ''),
+                                'source': '东方财富',
+                                'source_name': self.name,
+                                'datetime': item.get('showtime', ''),
+                                'url': f"https://stock.eastmoney.com{item.get('url', '')}",
+                                'category': channel_name
+                            })
+                            
+            except Exception as e:
+                logger.warning(f"获取东方财富{channel_name}新闻失败: {e}")
+                continue
+        
+        # 按时间排序
+        news_list.sort(key=lambda x: x.get('datetime', ''), reverse=True)
+        return news_list[:limit]
+
+
+# 新浪财经多栏目新闻源
+class SinaMultiNewsSource(NewsSource):
+    """新浪财经多栏目新闻"""
+    name = "sina_multi"
+    
+    CHANNELS = [
+        ('https://finance.sina.com.cn/stock/', '股票'),
+        ('https://finance.sina.com.cn/realstock/', '个股'),
+        ('https://finance.sina.com.cn/money/', '理财'),
+    ]
+    
+    def fetch(self, limit: int = 50, keyword: str = "",
+              start_date: str = "", end_date: str = "") -> List[Dict]:
+        news_list = []
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        }
+        
+        for url, category in self.CHANNELS:
+            try:
+                response = requests.get(url, headers=headers, timeout=8)
+                if response.status_code == 200:
+                    response.encoding = 'utf-8'
+                    # 简单解析 - 查找新闻标题链接
+                    import re
+                    # 匹配 class="news-link" 或类似模式的链接
+                    pattern = r'<a[^>]*href=["\']([^"\']+)["\'][^>]*>([^<]{10,100})</a>'
+                    matches = re.findall(pattern, response.text)
+                    
+                    for href, title in matches[:10]:
+                        if 'sina.com.cn' in href and title:
+                            if keyword and keyword.lower() not in title.lower():
+                                continue
+                            news_list.append({
+                                'id': f"sina_{len(news_list)}",
+                                'title': title.strip(),
+                                'content': '',
+                                'source': '新浪财经',
+                                'source_name': self.name,
+                                'datetime': datetime.now().strftime('%Y-%m-%d %H:%M'),
+                                'url': href if href.startswith('http') else f'https://finance.sina.com.cn{href}',
+                                'category': category
+                            })
+            except Exception as e:
+                logger.warning(f"获取新浪{category}新闻失败: {e}")
+        
+        return news_list[:limit]
+
+
+# 证券时报新闻源 - 从首页获取
+class STCNNewsSourceV2(NewsSource):
+    """证券时报 - 从首页HTML解析"""
+    name = "stcn_v2"
+    
+    def fetch(self, limit: int = 50, keyword: str = "",
+              start_date: str = "", end_date: str = "") -> List[Dict]:
+        news_list = []
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        }
+        
+        # 尝试不同URL
+        urls = [
+            ('https://www.stcn.com/u/cms/www/', '财经'),
+            ('https://www.stcn.com/news/index.html', '新闻'),
+        ]
+        
+        for url, category in urls:
+            try:
+                response = requests.get(url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    response.encoding = 'utf-8'
+                    
+                    # 查找文章链接 - 常见模式
+                    import re
+                    # 匹配 /news/xxx.html 形式的链接
+                    pattern = r'<a[^>]*href=["\']("/news/[^"\']+\.html")["\'][^>]*>([^<]{5,100})</a>'
+                    matches = re.findall(pattern, response.text)
+                    
+                    for href, title in matches[:15]:
+                        title = title.strip()
+                        if title and len(title) > 5:
+                            if keyword and keyword.lower() not in title.lower():
+                                continue
+                            news_list.append({
+                                'id': f"stcn_{len(news_list)}",
+                                'title': title,
+                                'content': '',
+                                'source': '证券时报',
+                                'source_name': self.name,
+                                'datetime': datetime.now().strftime('%Y-%m-%d %H:%M'),
+                                'url': f"https://www.stcn.com{href}",
+                                'category': category
+                            })
+            except Exception as e:
+                logger.warning(f"获取证券时报失败: {e}")
+        
+        # 去重
+        seen = set()
+        unique = []
+        for n in news_list:
+            if n['title'] not in seen:
+                seen.add(n['title'])
+                unique.append(n)
+        
+        return unique[:limit]
+
+
+# 凤凰网财经新闻源
+class IfengFinanceNewsSource(NewsSource):
+    """凤凰网财经 - 从首页解析"""
+    name = "ifeng_finance"
+    
+    def fetch(self, limit: int = 50, keyword: str = "",
+              start_date: str = "", end_date: str = "") -> List[Dict]:
+        news_list = []
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        }
+        
+        try:
+            response = requests.get('https://finance.ifeng.com/', headers=headers, timeout=10)
+            if response.status_code == 200:
+                response.encoding = 'utf-8'
+                
+                import re
+                # 匹配财经新闻链接
+                pattern = r'<a[^>]*href=["\']("https?://finance\.ifeng\.com/a/[^"\']+")["\'][^>]*>([^<]{5,100})</a>'
+                matches = re.findall(pattern, response.text)
+                
+                for url, title in matches[:20]:
+                    title = title.strip()
+                    if title and len(title) > 5:
+                        if keyword and keyword.lower() not in title.lower():
+                            continue
+                        news_list.append({
+                            'id': f"ifeng_{len(news_list)}",
+                            'title': title,
+                            'content': '',
+                            'source': '凤凰网财经',
+                            'source_name': self.name,
+                            'datetime': datetime.now().strftime('%Y-%m-%d %H:%M'),
+                            'url': url.strip('"'),
+                            'category': '财经'
+                        })
+        except Exception as e:
+            logger.warning(f"获取凤凰网财经失败: {e}")
+        
+        return news_list[:limit]
+
+
 # 新闻源注册表
 NEWS_SOURCES = {
     'cls': CLSNewsSource(),
     'eastmoney': EastMoneyNewsSource(),
+    'eastmoney_multi': EastMoneyMultiNewsSource(),
     'sina': SinaNewsSource(),
+    'sina_multi': SinaMultiNewsSource(),
     'qq': TencentNewsSource(),
     'hexun': HexunNewsSource(),
     'ifeng': IfengNewsSource(),
+    'ifeng_finance': IfengFinanceNewsSource(),
     'stcn': STCNNewsSource(),
+    'stcn_v2': STCNNewsSourceV2(),
     'yicai': YicaiNewsSource(),
     'bloomberg': BloombergNewsSource(),
     'wallstreet': WallStreetNewsSource(),
@@ -1095,14 +1356,47 @@ def fetch_news(
     from concurrent.futures import ThreadPoolExecutor
     
     # 默认使用多个新闻源来获取更多数据
-    stable_sources = ['eastmoney', 'sina', 'cls']  # 东方财富 + 新浪 + 财联社
+    # 优先使用稳定可用的源（有完整摘要）
+    # eastmoney - 有digest摘要
+    # eastmoney_multi - 8个板块，有摘要
+    stable_sources = ['eastmoney', 'eastmoney_multi']  # 东方财富(单板块+多板块)
     
+    # 如果用户没有指定sources，使用默认源
+    # 如果用户指定了sources，则使用用户选择的源（但过滤掉无效的源）
     if not sources:
         sources = stable_sources
     else:
-        # 过滤只保留稳定的源
-        sources = [s for s in sources if s in stable_sources]
-        if not sources:
+        # 用户指定了源，过滤只保留有效的源
+        valid_sources = [s for s in sources if s in NEWS_SOURCES]
+        
+        # 检查这些源是否能获取到有效数据（有正文内容的）
+        if valid_sources:
+            test_sources = []
+            for src in valid_sources:
+                if src in NEWS_SOURCES:
+                    try:
+                        test_news = NEWS_SOURCES[src].fetch(limit=3)
+                        # 检查是否有数据且有正文内容
+                        has_content = any(n.get('content') for n in test_news)
+                        if test_news and has_content:
+                            test_sources.append(src)
+                    except:
+                        pass
+            
+            if test_sources:
+                sources = test_sources
+            else:
+                # 用户选择的源没有有效数据，返回空结果
+                return {
+                    "success": True,
+                    "data": {
+                        "total": 0,
+                        "list": [],
+                        "sources": valid_sources
+                    }
+                }
+        else:
+            # 用户指定的源全部无效，使用默认源
             sources = stable_sources
     
     # 检查缓存
@@ -1125,7 +1419,8 @@ def fetch_news(
             return []
         source = NEWS_SOURCES[source_name]
         try:
-            news_list = source.fetch(limit=limit, keyword=keyword)
+            # 传递时间筛选参数
+            news_list = source.fetch(limit=limit, keyword=keyword, start_date=start_date, end_date=end_date)
             if news_list:
                 logger.info(f"从 {source_name} 获取 {len(news_list)} 条新闻")
                 return news_list
@@ -1167,12 +1462,44 @@ def fetch_news(
         # 不过滤，显示所有分类
         pass
     
+    # 时间筛选过滤
+    if start_date or end_date:
+        filtered_news = []
+        for news in all_news:
+            news_time = news.get('datetime', '')
+            if not news_time:
+                continue
+            try:
+                # 解析新闻时间
+                news_dt = datetime.strptime(news_time, '%Y-%m-%d %H:%M')
+                
+                # 检查是否在时间范围内
+                if start_date:
+                    start_dt = datetime.strptime(start_date, '%Y%m%d')
+                    if news_dt < start_dt:
+                        continue
+                if end_date:
+                    end_dt = datetime.strptime(end_date, '%Y%m%d')
+                    # 结束日期包含当天，所以设置为第二天零点
+                    end_dt = end_dt + timedelta(days=1)
+                    if news_dt >= end_dt:
+                        continue
+                        
+                filtered_news.append(news)
+            except Exception as e:
+                # 如果解析失败，保留这条新闻
+                filtered_news.append(news)
+        all_news = filtered_news
+    
     # 去重
     seen = set()
     unique_news = []
     for news in all_news:
         if news['title'] not in seen:
             seen.add(news['title'])
+            # 清洗content中的HTML标签
+            if news.get('content'):
+                news['content'] = clean_html_content(news['content'])
             unique_news.append(news)
     
     result = {

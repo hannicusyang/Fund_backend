@@ -2,7 +2,14 @@
 # 多因子选股数据模型 - 完整版
 
 from . import db
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
+
+# 东八区时区
+SHANGHAI_TZ = timezone(timedelta(hours=8))
+
+def get_shanghai_now():
+    """获取当前东八区时间"""
+    return datetime.now(SHANGHAI_TZ)
 
 
 class StockScreeningData(db.Model):
@@ -83,7 +90,7 @@ class StockScreeningData(db.Model):
     
     # 数据时间
     trade_date = db.Column(db.Date, nullable=False, comment='交易日期')
-    fetch_time = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, comment='数据获取时间')
+    fetch_time = db.Column(db.DateTime, nullable=False, default=get_shanghai_now, comment='数据获取时间')
     
     # 索引
     __table_args__ = (

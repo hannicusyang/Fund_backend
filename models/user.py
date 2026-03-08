@@ -2,7 +2,14 @@
 # 用户模型 - 支持多用户认证
 
 from . import db
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+# 东八区时区
+SHANGHAI_TZ = timezone(timedelta(hours=8))
+
+def get_shanghai_now():
+    """获取当前东八区时间"""
+    return datetime.now(SHANGHAI_TZ)
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
@@ -21,7 +28,7 @@ class User(db.Model):
     email = db.Column(db.String(100), comment='邮箱')
     invite_code = db.Column(db.String(36), comment='邀请码')
     status = db.Column(db.Integer, default=1, comment='状态: 1正常 0禁用')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, comment='创建时间')
+    created_at = db.Column(db.DateTime, default=get_shanghai_now, comment='创建时间')
     last_login = db.Column(db.DateTime, comment='最后登录时间')
 
     def set_password(self, password):

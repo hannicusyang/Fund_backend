@@ -5,8 +5,53 @@ from flask import Blueprint, jsonify, request
 from datetime import datetime, date, timedelta
 from typing import List, Dict
 import pandas as pd
+import re
 from config.logging_config import logger
 from models import db
+
+
+def clean_html_content(html_content: str) -> str:
+    """清洗HTML标签，转换为纯文本"""
+    if not html_content:
+        return ''
+    
+    # 移除风险提示和免责声明
+    html_content = re.sub(r'<div[^>]*style=["\']?color:\s*#666[^>]*>.*?风险提示.*?</div>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+    html_content = re.sub(r'<div[^>]*style=["\']?font-size:\s*12px[^>]*>.*?市场有风险.*?</div>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+    html_content = re.sub(r'<div[^>]*>.*?免责条款.*?</div>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+    
+    # 移除HTML注释
+    html_content = re.sub(r'<!--.*?-->', '', html_content, flags=re.DOTALL)
+    
+    # 将常见的HTML标签替换为换行
+    html_content = re.sub(r'</?p[^>]*>', '\n', html_content, flags=re.IGNORECASE)
+    html_content = re.sub(r'</?h[1-6][^>]*>', '\n', html_content, flags=re.IGNORECASE)
+    html_content = re.sub(r'</?div[^>]*>', '\n', html_content, flags=re.IGNORECASE)
+    html_content = re.sub(r'</?br\s*/?>', '\n', html_content, flags=re.IGNORECASE)
+    html_content = re.sub(r'</?li[^>]*>', '\n', html_content, flags=re.IGNORECASE)
+    html_content = re.sub(r'</?tr[^>]*>', '\n', html_content, flags=re.IGNORECASE)
+    html_content = re.sub(r'</?td[^>]*>', '\t', html_content, flags=re.IGNORECASE)
+    
+    # 处理链接，保留文本但移除标签
+    html_content = re.sub(r'<a[^>]*>([^<]*)</a>', r'\1', html_content, flags=re.IGNORECASE)
+    
+    # 移除所有剩余的HTML标签
+    html_content = re.sub(r'<[^>]+>', '', html_content)
+    
+    # 解码HTML实体
+    html_content = html_content.replace('&nbsp;', ' ')
+    html_content = html_content.replace('&amp;', '&')
+    html_content = html_content.replace('&lt;', '<')
+    html_content = html_content.replace('&gt;', '>')
+    html_content = html_content.replace('&quot;', '"')
+    html_content = html_content.replace('&#39;', "'")
+    
+    # 清理多余的空白字符
+    html_content = re.sub(r'[ \t]+', ' ', html_content)
+    html_content = re.sub(r'\n\s*\n', '\n', html_content)
+    html_content = html_content.strip()
+    
+    return html_content
 
 # 导入tushare
 import sys
@@ -581,6 +626,88 @@ def refresh_news_cache():
         return jsonify(result)
     except Exception as e:
         logger.error(f"刷新缓存失败: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@market_intelligence_bp.route('/api/market/intelligence/news/monitor', methods=['GET'])
+def get_monitor_news():
+    """获取资讯监控的视频字幕作为新闻"""
+    try:
+        limit = int(request.args.get('limit', 50))
+        
+        # 导入monitor模型
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        
+        DATABASE_URL = 'sqlite:///./fund_monitor.db'
+        engine = create_engine(DATABASE_URL, echo=False)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        
+        # 查询有内容的监控结果（字幕或描述）
+        from models.monitor.models import MonitorContent
+        from sqlalchemy import or_, and_
+        
+        # 财经平台列表
+        finance_platforms = ['cls', 'eastmoney', 'wallstreetcn', 'jin10', 'caijing', 'gelonghui']
+        
+        # 视频平台有字幕，财经平台有描述
+        contents = session.query(MonitorContent).filter(
+            or_(
+                MonitorContent.subtitle_content != None,
+                and_(MonitorContent.platform.in_(finance_platforms), MonitorContent.description != None)
+            )
+        ).order_by(MonitorContent.created_at.desc()).limit(limit).all()
+        
+        # 财经平台映射
+        platform_to_source = {
+            'cls': '财联社',
+            'eastmoney': '东方财富',
+            'wallstreetcn': '华尔街见闻',
+            'jin10': '金十数据',
+            'caijing': '财经网',
+            'gelonghui': '格隆汇'
+        }
+        
+        news_list = []
+        for c in contents:
+            # 判断来源：财经平台用平台名，视频平台用资讯监控
+            if c.platform in platform_to_source:
+                source = platform_to_source[c.platform]
+                # 财经平台使用description作为内容，并清洗HTML标签
+                raw_content = c.description if c.description else ''
+                content = clean_html_content(raw_content)
+            else:
+                source = '资讯监控'
+                # 视频平台使用subtitle_content作为内容（通常是纯文本）
+                content = c.subtitle_content if c.subtitle_content else ''
+            
+            news_list.append({
+                'id': f'monitor_{c.id}',
+                'title': c.title,
+                'content': content,
+                'summary': c.ai_summary,
+                'source': source,
+                'platform': c.platform,
+                'url': c.url,
+                'pub_time': c.created_at.strftime('%Y-%m-%d %H:%M:%S') if c.created_at else '',
+                'datetime': c.created_at.strftime('%Y-%m-%d %H:%M:%S') if c.created_at else ''
+            })
+        
+        session.close()
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "list": news_list,
+                "total": len(news_list)
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取监控资讯失败: {e}")
         return jsonify({"success": False, "message": str(e)}), 500
 
 

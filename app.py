@@ -26,7 +26,17 @@ from tasks.sync_stock_realtime import sync_stock_realtime
 from tasks.sync_stock_screening import sync_stock_screening_data  # ← 新增股票实时行情同步
 # from tasks.data_collection import run_data_collection  # ← 延迟导入避免循环
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=None)
+
+# 添加静态文件路由用于B站登录二维码
+@app.route('/bilibili_login_qr.png')
+def serve_qr():
+    from flask import send_file
+    qr_path = '/home/clawdbot/.openclaw/workspace/bilibili_login_qr.png'
+    if os.path.exists(qr_path):
+        return send_file(qr_path, mimetype='image/png')
+    return "QR码不存在", 404
+
 CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 app.config.from_object(AppConfig)
 
@@ -45,6 +55,10 @@ scheduler.add_job(sync_fund_basic_info, 'cron', hour=0, minute=10)
 scheduler.add_job(fund_open_synchronization, 'cron', id='fund_open_sync', hour=0, minute=30)
 scheduler.add_job(fetch_and_save_fund_estimation, trigger=IntervalTrigger(minutes=3), id='fund_estimation_job', replace_existing=True,max_instances=2)
 scheduler.add_job(sync_all_watched_funds, 'cron', id='fund_watched_sync', hour=0, minute=40)
+
+# 启动监控任务调度器
+from services.monitor.scheduler import init_scheduler
+init_scheduler(app)
 scheduler.add_job(sync_all_stock_overview, 'cron', hour=16, minute=30)
 scheduler.add_job(sync_stock_realtime, trigger=IntervalTrigger(minutes=1), id='stock_realtime_job', replace_existing=True, max_instances=1)  # ← 每分钟同步股票实时行情
 scheduler.add_job(sync_stock_screening_data, 'cron', hour=16, minute=35)  # ← 每日收盘后同步多因子筛选数据

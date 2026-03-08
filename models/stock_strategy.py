@@ -2,7 +2,14 @@
 # 股票策略持久化模型 - 组合配置、回测模板
 
 from . import db
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+# 东八区时区
+SHANGHAI_TZ = timezone(timedelta(hours=8))
+
+def get_shanghai_now():
+    """获取当前东八区时间"""
+    return datetime.now(SHANGHAI_TZ)
 import json
 
 
@@ -45,8 +52,8 @@ class PortfolioConfig(db.Model):
     is_default = db.Column(db.Boolean, default=False, comment='是否默认组合')
     
     # 时间戳
-    create_time = db.Column(db.DateTime, default=datetime.utcnow)
-    update_time = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    create_time = db.Column(db.DateTime, default=get_shanghai_now)
+    update_time = db.Column(db.DateTime, default=get_shanghai_now, onupdate=datetime.utcnow)
     
     def to_dict(self):
         return {
@@ -103,8 +110,8 @@ class BacktestTemplate(db.Model):
     is_default = db.Column(db.Boolean, default=False, comment='是否默认模板')
     
     # 时间戳
-    create_time = db.Column(db.DateTime, default=datetime.utcnow)
-    update_time = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    create_time = db.Column(db.DateTime, default=get_shanghai_now)
+    update_time = db.Column(db.DateTime, default=get_shanghai_now, onupdate=datetime.utcnow)
     
     def to_dict(self):
         return {
@@ -143,7 +150,7 @@ class UserFactorPreference(db.Model):
     factor_list = db.Column(db.JSON, comment='因子列表')
     weight_config = db.Column(db.JSON, comment='权重配置')
     
-    create_time = db.Column(db.DateTime, default=datetime.utcnow)
+    create_time = db.Column(db.DateTime, default=get_shanghai_now)
     
     def to_dict(self):
         return {
@@ -183,7 +190,7 @@ class BacktestReport(db.Model):
     notes = db.Column(db.Text, comment='备注')
     
     # 时间戳
-    create_time = db.Column(db.DateTime, default=datetime.utcnow)
+    create_time = db.Column(db.DateTime, default=get_shanghai_now)
     
     def to_dict(self):
         return {

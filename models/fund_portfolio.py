@@ -1,6 +1,13 @@
 # models/fund_portfolio.py
 from . import db
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+# 东八区时区
+SHANGHAI_TZ = timezone(timedelta(hours=8))
+
+def get_shanghai_now():
+    """获取当前东八区时间"""
+    return datetime.now(SHANGHAI_TZ)
 
 
 class FundPortfolio(db.Model):
@@ -27,8 +34,8 @@ class FundPortfolio(db.Model):
     
     is_default = db.Column(db.Boolean, default=False, comment='是否默认组合')
     is_active = db.Column(db.Boolean, default=True, comment='是否启用')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, comment='创建时间')
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment='更新时间')
+    created_at = db.Column(db.DateTime, default=get_shanghai_now, comment='创建时间')
+    updated_at = db.Column(db.DateTime, default=get_shanghai_now, onupdate=datetime.utcnow, comment='更新时间')
 
     # 关联关系
     items = db.relationship('FundPortfolioItem', backref='portfolio', lazy='dynamic', cascade='all, delete-orphan')
@@ -60,8 +67,8 @@ class FundPortfolioItem(db.Model):
     weekly_return = db.Column(db.DECIMAL(10, 4), comment='周收益率')
     fee_rate = db.Column(db.DECIMAL(10, 4), comment='费率')
     
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, comment='创建时间')
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment='更新时间')
+    created_at = db.Column(db.DateTime, default=get_shanghai_now, comment='创建时间')
+    updated_at = db.Column(db.DateTime, default=get_shanghai_now, onupdate=datetime.utcnow, comment='更新时间')
 
     def __repr__(self):
         return f"<FundPortfolioItem {self.portfolio_id}: {self.fund_code} {self.weight}%>"

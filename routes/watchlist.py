@@ -1,10 +1,14 @@
 # routes/watchlist.py
+from datetime import datetime, timezone, timedelta
 from flask import Blueprint, jsonify, request
 from models import db
 from models.fund_watchlist import FundWatchlist
 from models.fund_open_rank import FundOpenRankAll
 from models.my_fund_holding import MyFundHolding
 from utils.auth import get_current_user_id_or_default
+
+# 东八区时区
+SHANGHAI_TZ = timezone(timedelta(hours=8))
 
 watchlist_bp = Blueprint('watchlist', __name__)
 
@@ -42,7 +46,7 @@ def add_to_watchlist():
         cost_price=0,
         shares=0,
         total_cost=0,
-        purchased_at=datetime.utcnow()  # 首次“虚拟”买入时间
+        purchased_at=datetime.now(SHANGHAI_TZ)  # 首次“虚拟”买入时间
     )
     db.session.add(holding)
 

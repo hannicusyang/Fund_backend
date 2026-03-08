@@ -2,7 +2,14 @@
 # 因子定义模型 - 多因子选股系统
 
 from . import db
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+# 东八区时区
+SHANGHAI_TZ = timezone(timedelta(hours=8))
+
+def get_shanghai_now():
+    """获取当前东八区时间"""
+    return datetime.now(SHANGHAI_TZ)
 
 
 class ScreeningStrategy(db.Model):
@@ -36,8 +43,8 @@ class ScreeningStrategy(db.Model):
     is_public = db.Column(db.Boolean, default=False, comment='是否公开')
     
     # 时间戳
-    create_time = db.Column(db.DateTime, default=datetime.utcnow)
-    update_time = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    create_time = db.Column(db.DateTime, default=get_shanghai_now)
+    update_time = db.Column(db.DateTime, default=get_shanghai_now, onupdate=datetime.utcnow)
     
     def to_dict(self):
         return {

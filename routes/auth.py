@@ -3,11 +3,14 @@
 
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify
 import jwt
 from models import db
 from models.user import User
+
+# 东八区时区
+SHANGHAI_TZ = timezone(timedelta(hours=8))
 
 # 配置
 SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'fund_system_secret_key_2024')
@@ -22,8 +25,8 @@ def generate_token(user_id, username):
     payload = {
         'user_id': user_id,
         'username': username,
-        'exp': datetime.utcnow() + timedelta(hours=TOKEN_EXPIRE_HOURS),
-        'iat': datetime.utcnow()
+        'exp': datetime.now(SHANGHAI_TZ) + timedelta(hours=TOKEN_EXPIRE_HOURS),
+        'iat': datetime.now(SHANGHAI_TZ)
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
     return token
@@ -119,7 +122,7 @@ def login():
         return jsonify({'success': False, 'message': '账号已被禁用'}), 403
     
     # 更新最后登录时间
-    user.last_login = datetime.utcnow()
+    user.last_login = datetime.now(SHANGHAI_TZ)
     db.session.commit()
     
     # 生成Token

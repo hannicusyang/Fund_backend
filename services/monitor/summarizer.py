@@ -1,13 +1,13 @@
 """
-AI总结服务
+AI总结服务 - 支持Anthropic/MiniMax SDK
 """
 import os
-import json
+import anthropic
 
 # API配置
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
-OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o')
+ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', 'sk-cp-wnncftw40-0FXBvMvNkPQeIaJdDQ6iCb5DGT1PlwWY0BfCHsvpruGqrd0RX8B0p8SROBNdHvEjAgAhslgNHXw6pqe6ZQVbCW87MHk5GrGMYArT6BOr2jc4w')
+# 正确的base_url!
+ANTHROPIC_BASE_URL = 'https://api.minimaxi.com/anthropic'
 
 
 def summarize_text(text, max_length=500):
@@ -15,52 +15,46 @@ def summarize_text(text, max_length=500):
     if not text or len(text.strip()) < 10:
         return "内容太短，无法总结"
     
-    if not OPENAI_API_KEY:
-        # 如果没有API Key，返回原文摘要
-        return f"[无AI API，请配置OPENAI_API_KEY] {text[:200]}..."
+    # 截取前3000字符
+    truncated_text = text[:3000]
     
-    # TODO: 实现真正的AI总结
-    # 这里先用简单截取作为占位
-    try:
-        import requests
-        
-        headers = {
-            'Authorization': f'Bearer {OPENAI_API_KEY}',
-            'Content-Type': 'application/json'
-        }
-        
-        # 截取前2000字符
-        truncated_text = text[:2000]
-        
-        prompt = f"""请用简洁的语言总结以下视频字幕内容，要求：
-1. 提取核心观点
-2. 保留关键数据
-3. 总结时间约{max_length}字
+    prompt = f"""请用简洁的语言总结以下视频字幕内容，要求：
+1. 提取核心观点和主题
+2. 保留关键数据和信息
+3. 总结{max_length}字左右
 
 字幕内容：
 {truncated_text}"""
 
-        payload = {
-            "model": OPENAI_MODEL,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
-            "max_tokens": 800
-        }
-        
-        response = requests.post(
-            f'{OPENAI_BASE_URL}/chat/completions',
-            headers=headers,
-            json=payload,
-            timeout=30
+    return summarize_with_anthropic(prompt, max_length)
+
+
+def summarize_with_anthropic(prompt, max_length=500):
+    """使用Anthropic SDK (MiniMax) 总结"""
+    try:
+        client = anthropic.Anthropic(
+            api_key=ANTHROPIC_API_KEY,
+            base_url=ANTHROPIC_BASE_URL
         )
         
-        if response.status_code == 200:
-            result = response.json()
-            summary = result['choices'][0]['message']['content']
-            return summary
-        else:
-            return f"AI总结失败: {response.status_code}"
-            
+        message = client.messages.create(
+            model="MiniMax-M2.5",
+            max_tokens=max_length + 200,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+        
+        # 处理响应
+        for block in message.content:
+            if block.type == "text":
+                return block.text
+            elif block.type == "thinking":
+                # 思考过程不需要返回
+                continue
+        
+        return "AI返回内容为空"
+        
     except Exception as e:
-        return f"总结失败: {str(e)}"
+        error_msg = str(e)
+        return f"MiniMax总结失败: {error_msg}"

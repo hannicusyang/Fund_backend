@@ -9,10 +9,13 @@ from models.fund_estimation import FundEstimation
 from models.fund_open_rank import FundOpenRankAll  # 用于获取基金名称
 from datetime import date
 from flask import request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import and_, func
 from collections import defaultdict
 import time as time_module
+
+# 东八区时区
+SHANGHAI_TZ = timezone(timedelta(hours=8))
 from config import *
 from utils.auth import get_current_user_id_or_default
 
@@ -451,7 +454,7 @@ def get_fund_estimation_history(fund_code):
                 }), 400
         else:
             # 默认查询今天
-            query_date = datetime.utcnow().date()
+            query_date = datetime.now(SHANGHAI_TZ).date()
 
         # 查询该基金在指定日期的所有估值记录
         # 注意：estimation_date 是估算所针对的日期 (T日)
@@ -529,7 +532,7 @@ def get_portfolio_history():
         holding_map = {h.fund_code: h for h in holdings}
 
         # 计算起始日期
-        end_date = datetime.utcnow().date()
+        end_date = datetime.now(SHANGHAI_TZ).date()
         start_date = end_date - timedelta(days=days)
 
         # 查询这些基金在 [start_date, end_date] 的所有历史净值

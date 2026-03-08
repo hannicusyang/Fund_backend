@@ -1,6 +1,13 @@
 # models/fund_list.py
 from . import db
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+# 东八区时区
+SHANGHAI_TZ = timezone(timedelta(hours=8))
+
+def get_shanghai_now():
+    """获取当前东八区时间"""
+    return datetime.now(SHANGHAI_TZ)
 
 
 class FundList(db.Model):
@@ -19,7 +26,7 @@ class FundList(db.Model):
     subscription_fee = db.Column(db.Float, default=0, comment='申购费率(%)')
     redemption_fee = db.Column(db.Float, default=0, comment='赎回费率(%)')
     fund_status = db.Column(db.String(20), default='开放', comment='基金状态')
-    update_time = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    update_time = db.Column(db.DateTime, default=get_shanghai_now, onupdate=datetime.utcnow)
 
     def __repr__(self):
         return f"<FundList {self.fund_code}: {self.fund_name}>"

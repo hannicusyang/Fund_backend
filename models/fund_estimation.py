@@ -1,6 +1,14 @@
 # models/fund_estimation.py
 from . import db
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+import time
+
+# 东八区时区
+SHANGHAI_TZ = timezone(timedelta(hours=8))
+
+def get_shanghai_now():
+    """获取当前东八区时间"""
+    return datetime.now(SHANGHAI_TZ)
 
 
 class FundEstimation(db.Model):
@@ -21,7 +29,7 @@ class FundEstimation(db.Model):
     published_growth_rate = db.Column(db.DECIMAL(10, 4))
     estimation_bias = db.Column(db.DECIMAL(10, 4))
     last_nav = db.Column(db.DECIMAL(18, 6), comment='T-1日单位净值')
-    fetch_time = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    fetch_time = db.Column(db.DateTime, nullable=False, default=get_shanghai_now)
 
     # ✅ 移除了 UniqueConstraint('fund_code', 'estimation_date')
     __table_args__ = (

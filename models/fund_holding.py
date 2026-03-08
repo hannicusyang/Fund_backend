@@ -1,6 +1,13 @@
 # models/fund_holding.py
 from . import db
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+# 东八区时区
+SHANGHAI_TZ = timezone(timedelta(hours=8))
+
+def get_shanghai_now():
+    """获取当前东八区时间"""
+    return datetime.now(SHANGHAI_TZ)
 
 
 class FundHolding(db.Model):
@@ -14,7 +21,7 @@ class FundHolding(db.Model):
     market_value = db.Column(db.DECIMAL(14, 2))
     quarter = db.Column(db.String(20), nullable=False)
     report_date = db.Column(db.Date)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_shanghai_now)
 
     __table_args__ = (
         db.UniqueConstraint('fund_code', 'stock_code', 'quarter', name='uk_fund_stock_quarter'),

@@ -16,8 +16,11 @@ from models.fund_nav_history import FundNavHistory
 from models.my_fund_holding import MyFundHolding
 from models.fund_watchlist import FundWatchlist
 from models.index_history import IndexHistory, BENCHMARK_INDICES
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pandas as pd
+
+# 东八区时区
+SHANGHAI_TZ = timezone(timedelta(hours=8))
 import numpy as np
 from sqlalchemy import func
 from utils.auth import get_current_user_id_or_default
@@ -2258,7 +2261,7 @@ def update_portfolio(portfolio_id):
                 )
                 db.session.add(item)
         
-        portfolio.updated_at = datetime.utcnow()
+        portfolio.updated_at = datetime.now(SHANGHAI_TZ)
         db.session.commit()
         
         return jsonify({
@@ -2300,7 +2303,7 @@ def delete_portfolio(portfolio_id):
             }), 404
         
         portfolio.is_active = False
-        portfolio.updated_at = datetime.utcnow()
+        portfolio.updated_at = datetime.now(SHANGHAI_TZ)
         db.session.commit()
         
         return jsonify({
@@ -2345,7 +2348,7 @@ def set_default_portfolio(portfolio_id):
         
         # 设置当前为默认
         portfolio.is_default = True
-        portfolio.updated_at = datetime.utcnow()
+        portfolio.updated_at = datetime.now(SHANGHAI_TZ)
         db.session.commit()
         
         return jsonify({
