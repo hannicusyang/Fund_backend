@@ -98,8 +98,11 @@ def is_a_stock_trading_time():
     today = now.date()
     current_time = now.time()
 
-    # 检查交易时段
-    if not (time(9, 30) <= current_time <= time(15, 0)):
+    # A股交易时段：9:30-11:30, 13:00-15:00
+    # 允许在收盘后短时间内仍抓取（如15:00-15:05），确保覆盖收盘时刻
+    morning_session = time(9, 30) <= current_time <= time(11, 30)
+    afternoon_session = time(13, 0) <= current_time <= time(15, 5)  # 延后5分钟
+    if not (morning_session or afternoon_session):
         return False
 
     # 查数据库
