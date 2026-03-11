@@ -164,7 +164,7 @@ def openfund_update():
     fund_open_synchronization()
     return {"status": "开放型基金信息已更新"}
 
-@app.route("/api//fund/history/<fund_code>")
+@app.route("/api/fund/history/<fund_code>")
 def api_fetch_fund(fund_code: str):
     result = fetch_and_save_fund_history(fund_code, force_update=True)
     return jsonify(result)
