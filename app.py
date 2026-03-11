@@ -126,6 +126,10 @@ from routes.stock_backtest import stock_backtest_bp  # 股票回测API
 from routes.stock_backtest_pro import stock_backtest_pro_bp  # 专业回测API
 from routes.stock_strategy_api import stock_strategy_bp  # 策略持久化API
 from routes.market_intelligence import market_intelligence_bp  # 市场资讯API
+from routes.fund_analysis import fund_analysis_bp  # 基金AI分析API
+from routes.portfolio_analysis import portfolio_analysis_bp  # 组合AI分析API
+from routes.backtest_analysis import backtest_analysis_bp  # 回测AI分析API
+from routes.stock_analysis import stock_analysis_bp  # 股票AI分析API
 
 app.register_blueprint(watchlist_bp, url_prefix='/api/watchlist')
 app.register_blueprint(fund_rank_bp, url_prefix='/api/funds')
@@ -146,6 +150,10 @@ app.register_blueprint(stock_strategy_bp, url_prefix='/api/strategy')  # 策略�
 app.register_blueprint(market_intelligence_bp)  # 市场资讯API
 app.register_blueprint(monitor_bp, url_prefix='/api/monitor')  # 资讯监控API
 app.register_blueprint(manual_bp, url_prefix='/api/manual')  # 手动添加API
+app.register_blueprint(fund_analysis_bp, url_prefix='/api/fund/analysis')  # 基金AI分析API
+app.register_blueprint(portfolio_analysis_bp, url_prefix='/api/portfolio')  # 组合AI分析API
+app.register_blueprint(backtest_analysis_bp, url_prefix='/api/backtest/analysis')  # 回测AI分析API
+app.register_blueprint(stock_analysis_bp, url_prefix='/api/stock/analysis')  # 股票AI分析API
 # ====== 路由（保持原样）======
 @app.route('/api/run-task')
 def manual_run():

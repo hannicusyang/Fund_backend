@@ -7,7 +7,7 @@ ENV = os.getenv('FLASK_ENV', 'development')
 # MiniMax API 配置
 # 使用Anthropic兼容格式
 MINIMAX_API_KEY = os.getenv('MINIMAX_API_KEY', 'sk-cp-wnncftw40-0FXBvMvNkPQeIaJdDQ6iCb5DGT1PlwWY0BfCHsvpruGqrd0RX8B0p8SROBNdHvEjAgAhslgNHXw6pqe6ZQVbCW87MHk5GrGMYArT6BOr2jc4w')
-MINIMAX_BASE_URL = os.getenv('MINIMAX_BASE_URL', 'https://api.minimaxi.com/anthropic')
+MINIMAX_BASE_URL = os.getenv('MINIMAX_BASE_URL', 'https://api.minimaxi.com/v1')
 
 # 各环境配置
 ENV_CONFIGS = {
